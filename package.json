@@ -1,0 +1,27 @@
+{
+  "name": "flighthub-v2-prototype",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "THROWAWAY click dummy for FlightHub V2. No backend, mock data only.",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "*",
+    "react": "*",
+    "react-dom": "*",
+    "react-router-dom": "*"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "*",
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "@vitejs/plugin-react": "*",
+    "tailwindcss": "*",
+    "typescript": "*",
+    "vite": "*"
+  }
+}
