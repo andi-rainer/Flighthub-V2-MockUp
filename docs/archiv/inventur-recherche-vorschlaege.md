@@ -1,3 +1,5 @@
+> **Archiv, Ausgangsmaterial.** Dieses Dokument entstand vor den Dokumenten 01 bis 05 und vermischt Beschlüsse, Claude-Entwürfe und Dummy-Details. Es ist **nicht** die Quelle der Wahrheit: Was beschlossen ist, steht in [../02-v2-beschluesse.md](../02-v2-beschluesse.md), offene Fragen und Ideen in [../04-offen-und-ideen.md](../04-offen-und-ideen.md). Bei Widersprüchen gelten 01 bis 05. Der Text unten ist unverändert.
+
 # FlightHub V2: Inventur, Recherche, Vorschläge
 
 Stand: 06.11.2026. Grundlage: Code von FlightHub V1 (Zeilenzahlen aus `app/(dashboard)`), Web-Recherche (Quellen unten) und der Klickdummy.
