@@ -202,7 +202,7 @@ export function usePaging<T>(rows: T[], resetKey: string, sizes: number[] = [25,
 export function Logo({ size = 32 }: { size?: number }) {
   return (
     <span className="block shrink-0 overflow-hidden" style={{ width: size, height: size, borderRadius: size * 0.23 }} aria-label="FlightHub">
-      <img src="/logo.png" alt="" style={{ width: '116.5%', maxWidth: 'none', marginLeft: '-8.2%', marginTop: '-8.2%' }} />
+      <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" style={{ width: '116.5%', maxWidth: 'none', marginLeft: '-8.2%', marginTop: '-8.2%' }} />
     </span>
   )
 }
