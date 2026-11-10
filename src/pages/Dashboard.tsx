@@ -11,7 +11,7 @@ import { fmtAbs } from '../dates'
 import { flightKey, flightPath, type FlightSource } from './FlightPage'
 import { Badge, Button, Card, PageHeader, Stat } from '../ui'
 import { dueList } from './aircraft/data'
-import { computeSparten } from './finance/results'
+import { computeResults } from './finance/results'
 import { initialFees } from './members/data'
 import { MANIFEST_TODAY, TODAY_DAY } from './manifest/data'
 
@@ -36,8 +36,11 @@ function Task({ to, n, label, hint }: { to: string; n: number; label: string; hi
 }
 
 function Treasurer() {
-  const { ledger, flights, apps, hasAccount, persona, can, aircraftData, docsOf } = useApp()
-  const { rows, income, cost } = computeSparten()
+  const { ledger, flights, apps, hasAccount, persona, can, aircraftData, docsOf, entries } = useApp()
+  const year = TODAY_ISO.slice(0, 4)
+  const res = computeResults(ledger, entries, year)
+  const { income, cost } = res
+  const rows = res.rows.filter((r) => r.cc.kind === 'Sparte')
   const withAccount = members.filter((m) => hasAccount(m.id))
   const toCharge = flights.filter((f) => f.state === 'offen').length
   const openLines = ledger.lines.filter((l) => !ledger.done[l.id]).length
@@ -49,7 +52,7 @@ function Treasurer() {
   const credit = withAccount.reduce((n, m) => n + Math.max(0, ledger.balances[m.id] ?? 0), 0)
   const dues = aircraft.flatMap((a) => dueList(aircraftData[a.id], TODAY_ISO).map((d) => ({ ...d, reg: a.reg }))).sort((a, b) => a.days - b.days).slice(0, 4)
   const expiring = members.reduce((n, m) => n + docsOf(m.id).filter((d) => d.state !== 'ok').length, 0)
-  const max = Math.max(...rows.map((r) => Math.abs(r.result)))
+  const max = Math.max(1, ...rows.map((r) => Math.abs(r.result)))
 
   return (
     <>
@@ -68,7 +71,7 @@ function Treasurer() {
         <Stat label="Kassa" value={eur(ledger.cash)} hint="Bargeld" />
         <Stat label="Offen bei Mitgliedern" value={eur(owed)} tone={owed < 0 ? 'bad' : undefined} hint="Betriebskonten im Minus" />
         <Stat label="Guthaben der Mitglieder" value={eur(credit)} hint="Vorauszahlungen" />
-        <Stat label="Ergebnis 2026" value={eur(income - cost)} tone={income - cost >= 0 ? 'ok' : 'bad'} hint="Einnahmen minus Kosten" />
+        <Stat label={`Ergebnis ${year}`} value={eur(income - cost)} tone={income - cost >= 0 ? 'ok' : 'bad'} hint="Erträge minus Kosten" />
       </div>
 
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
@@ -77,14 +80,13 @@ function Treasurer() {
           <div className="mb-3 flex items-center justify-between font-semibold">Ergebnis je Sparte<Link to="/finanzen?tab=ergebnis" className="text-sm font-normal text-brand">Details</Link></div>
           <div className="space-y-3">
             {rows.map((r) => (
-              <div key={r.id} className="grid grid-cols-[140px_1fr_90px] items-center gap-3 text-sm">
-                <span>{r.name}</span>
+              <div key={r.cc.id} className="grid grid-cols-[140px_1fr_90px] items-center gap-3 text-sm">
+                <span>{r.cc.name}</span>
                 <div className="relative h-5"><div className="absolute left-1/2 top-0 h-5 w-px bg-line" /><div className={clsx('absolute top-0.5 h-4 rounded-sm', r.result >= 0 ? 'left-1/2 bg-ok' : 'right-1/2 bg-bad')} style={{ width: `${(Math.abs(r.result) / max) * 50}%` }} /></div>
                 <span className={clsx('text-right font-medium tabular-nums', r.result < 0 && 'text-bad')}>{eur(r.result)}</span>
               </div>
             ))}
           </div>
-          <p className="mt-3 text-xs text-muted">Mitglieder-Charter deckt die Kosten nicht. Das Tandem trägt den Rest.</p>
         </Card>
         <Card className="p-5">
           <div className="mb-3 font-semibold">Als Nächstes fällig</div>

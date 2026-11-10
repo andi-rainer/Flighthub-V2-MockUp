@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  AUSLAGE_ID, bankLines, CASH_ID, eur, historyDone, historyLines, historyReceipts, initialCategories, initialCostCenters, initialMoneyAccounts, initialReceipts, initialReleased, members,
+  AUSLAGE_ID, bankLines, CASH_ID, eur, historyDone, historyLines, historyReceipts, incomeDone, incomeLines, initialCategories, initialCostCenters, initialMoneyAccounts, initialReceipts, initialReleased, members,
   type BankLine, type Category, type CostCenter, type MoneyAccount, type Receipt, type Released, type SingleTarget, type Split, type Target,
 } from '../../data'
 
@@ -127,8 +127,8 @@ const seedExpenses: ExpenseRequest[] = [
 
 /** Prototype state only. In the real app every one of these is a ledger posting. */
 export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
-  const [lines, setLines] = useState<BankLine[]>([...bankLines, ...historyLines])
-  const [done, setDone] = useState<Record<string, Target>>(historyDone)
+  const [lines, setLines] = useState<BankLine[]>([...bankLines, ...historyLines, ...incomeLines])
+  const [done, setDone] = useState<Record<string, Target>>({ ...historyDone, ...incomeDone })
   const [balances, setBalances] = useState<Record<string, number>>(() => Object.fromEntries(members.map((m) => [m.id, m.balance])))
   const [history, setHistory] = useState<Record<string, Entry[]>>(() =>
     Object.fromEntries(members.map((m) => [m.id, [

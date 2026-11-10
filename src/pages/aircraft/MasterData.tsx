@@ -1,7 +1,9 @@
 import { X } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { eur, fixedCostsYear, sparten, varPerMinute } from '../../data'
+import { eur } from '../../data'
+import { computeResults } from '../finance/results'
+import { TODAY_ISO } from '../../state'
 import { areaOn } from '../../modules'
 import { useApp } from '../../state'
 import { Badge, Row, Section, field } from '../../ui'
@@ -39,12 +41,12 @@ export function MasterData({ id }: { id: string }) {
 /** What the aircraft costs per hour, from the books, and the prices of the operation kinds. */
 export function Costs({ id }: { id: string }) {
   const { ac } = useAircraft(id)
-  const { kinds, modules } = useApp()
-  const totalMin = sparten.reduce((n, s) => n + s.minutes, 0)
-  const perMin = varPerMinute + fixedCostsYear / totalMin
+  const { kinds, modules, ledger, entries } = useApp()
+  const year = String(Number(TODAY_ISO.slice(0, 4)) - 1)
+  const cover = computeResults(ledger, entries, year).aircraft.find((a) => a.reg === ac.reg)?.coverPerHour
   return (
     <Section title="Kosten">
-      <Row label="Kostendeckender Satz" hint="aus Bordbuch, Belegen und Finanzen"><span className="text-lg font-semibold tabular-nums">{eur(perMin * 60)} <span className="text-sm font-normal text-muted">pro Stunde</span></span></Row>
+      <Row label={`Kostendeckender Satz ${year}`} hint="Kosten des Jahres durch Flugstunden laut Bordbuch"><span className="text-lg font-semibold tabular-nums">{cover ? eur(cover) : '–'} <span className="text-sm font-normal text-muted">pro Stunde</span></span></Row>
       {kinds.filter((k) => k.rates[ac.reg] !== undefined && areaOn(modules, k.area)).map((k) => <Row key={k.id} label={k.name}><span className="tabular-nums">{eur(k.rates[ac.reg])} je Minute</span></Row>)}
       <div className="px-5 py-3 text-sm"><Link to="/verein?tab=betriebsarten" className="font-medium text-brand hover:underline">Preise unter Vereinseinstellungen, Betriebsarten</Link></div>
     </Section>

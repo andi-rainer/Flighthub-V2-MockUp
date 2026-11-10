@@ -68,17 +68,6 @@ export interface Jumper {
 export const eur = (n: number) =>
   new Intl.NumberFormat('de-AT', { style: 'currency', currency: 'EUR' }).format(n)
 
-// Sparten per aircraft (Finanz-Screen)
-export const sparten = [
-  { id: 's1', name: 'Sportspringen', minutes: 5200, income: 24_900 },
-  { id: 's2', name: 'Tandem', minutes: 3600, income: 31_900 },
-  { id: 's3', name: 'Mitglieder-Charter', minutes: 2400, income: 9_600 },
-  { id: 's4', name: 'Fremd-Charter', minutes: 600, income: 3_900 },
-]
-export const varPerMinute = 1.9 // fuel + engine reserve, from real invoices
-export const fixedCostsYear = 38_400 // insurance, hangar, depreciation, annual inspection ...
-export const currentCharterRatePerMin = 4 // what members pay today
-
 // ---- Cost centers, categories (both user-managed), receipts, bank lines ----
 export interface CostCenter { id: string; name: string; kind: 'Flugzeug' | 'Sparte' | 'Allgemein'; archived?: boolean }
 export interface Category { id: string; name: string; type: 'Kosten' | 'Ertrag'; fixed?: boolean; archived?: boolean }
@@ -142,7 +131,7 @@ export const CASH_ID = 'acc-kassa'
 /** Bookings without money moving on an account of the club (a member paid privately): they are on no money account. */
 export const AUSLAGE_ID = 'acc-auslage'
 export const initialMoneyAccounts: MoneyAccount[] = [
-  { id: 'acc-bank', name: 'Hauptkonto', kind: 'bank', detail: 'Girokonto des Vereins', opening: 36_000 },
+  { id: 'acc-bank', name: 'Hauptkonto', kind: 'bank', detail: 'Girokonto des Vereins', opening: -5_550 },
   { id: CASH_ID, name: 'Kassa', kind: 'bar', detail: 'Bargeld im Büro', opening: 412 },
   { id: 'acc-spar', name: 'Sparbuch', kind: 'spar', detail: 'Rücklage Flugzeuge', opening: 12_000 },
 ]
@@ -197,7 +186,8 @@ export const initialReceipts: Receipt[] = [
 // ---- Earlier years: booked and released, so the evaluations (maintenance of the last three years) have something to show ----
 const plusDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
 /** [invoice date, supplier, invoice number, amount, cost center, category, liters (fuel only)] */
-const HISTORY: [string, string, string, number, string, string, number?][] = [
+type HistoryRow = [string, string, string, number, string, string, number?]
+const HISTORY_BASE: HistoryRow[] = [
   ['2024-02-14', 'Fa. Hofer Schlosserei', 'HS-2024-014', 480, 'cc-oedza', 'k-maint'],
   ['2024-03-05', 'Shell Austria', '71204', 612.4, 'cc-oedza', 'k-fuel', 211],
   ['2024-04-22', 'Austro Aero Technik GmbH', 'AAT-24-0388', 2350, 'cc-oedza', 'k-maint'],
@@ -218,9 +208,37 @@ const HISTORY: [string, string, string, number, string, string, number?][] = [
   ['2026-06-23', 'Fallschirm-Service Linz', 'FS-2026-38', 720, 'cc-ausr', 'k-maint'],
   ['2026-09-15', 'Austro Aero Technik GmbH', 'AAT-26-0788', 1215.4, 'cc-oeaxb', 'k-maint'],
 ]
+/** Running costs of every aircraft per year (insurance, hangar, fuel by quarter): generated, so the evaluations have a full picture. */
+const RUNNING: HistoryRow[] = []
+for (const y of [2024, 2025, 2026]) {
+  for (const [cc, tag, insurance, hangar, fuel] of [['cc-oedza', 'DZA', 2400, 1800, 3100], ['cc-oekfr', 'KFR', 1800, 1800, 1900], ['cc-oeaxb', 'AXB', 3100, 2400, 3400]] as const) {
+    RUNNING.push([`${y}-01-15`, 'Wiener Städtische', `WS-${y}-${tag}`, insurance, cc, 'k-ins'], [`${y}-04-02`, 'Hangar Wels GmbH', `HM-${y}-${tag}`, hangar, cc, 'k-hangar'])
+    for (const m of y === 2026 ? ['03', '06', '09'] : ['03', '06', '09', '12']) RUNNING.push([`${y}-${m}-12`, 'Shell Austria', `SH-${y}${m}-${tag}`, fuel, cc, 'k-fuel', Math.round(fuel / 2.95)])
+  }
+}
+const HISTORY: HistoryRow[] = [...HISTORY_BASE, ...RUNNING]
 export const historyLines: BankLine[] = HISTORY.map(([d, supplier, no, amount], i) => ({ id: `h${i + 1}`, date: plusDays(d, 8), text: `${supplier} – Rechn. ${no}`, amount: -amount, accountId: BANK, needsReceipt: true }))
 export const historyReceipts: Receipt[] = HISTORY.map(([d, supplier, no, amount, , , liters], i) => ({ id: `rh${i + 1}`, name: `${no}.pdf`, supplier, number: no, amount, date: d, source: 'E-Mail', lineId: `h${i + 1}`, fuel: liters ? { liters, perLiter: Math.round((amount / liters) * 1000) / 1000 } : undefined }))
 export const historyDone: Record<string, Target> = Object.fromEntries(HISTORY.map(([, , , , cc, cat], i) => [`h${i + 1}`, one(cc, cat)]))
+
+/** Income of earlier years that came in through the bank (shop payouts, ticket sales, charter of other clubs, membership fees, donations). Generated. */
+type IncomeRow = [string, string, number, string, string]
+const INCOME: IncomeRow[] = []
+for (const [y, tandem, ticket, charter, fees] of [[2024, 3400, 2100, 1900, 16_200], [2025, 4100, 2600, 2300, 17_100], [2026, 4800, 3100, 2700, 18_000]] as const) {
+  INCOME.push([`${y}-02-20`, `Mitgliedsbeiträge ${y}`, fees, 'cc-verein', 'e-fees'])
+  for (const m of ['05', '06', '07', '08', '09']) INCOME.push([`${y}-${m}-28`, 'Tandem-Shop Stripe Auszahlung', tandem, 'cc-tandem', 'e-tandem'], [`${y}-${m}-29`, 'Ticketverkauf Sprungbetrieb', ticket, 'cc-sport', 'e-ticket'])
+  for (const m of ['03', '06', '09']) INCOME.push([`${y}-${m}-25`, 'Charter an Fallschirmclub Linz', charter, 'cc-fcharter', 'e-charter'])
+}
+INCOME.push(['2024-12-18', 'Spende Weihnachtsaktion', 400, 'cc-verein', 'e-donation'], ['2025-08-09', 'Spende Fliegerfest', 650, 'cc-verein', 'e-donation'], ['2026-06-14', 'Spende Platzfest', 300, 'cc-verein', 'e-donation'])
+export const incomeLines: BankLine[] = INCOME.map(([date, text, amount], i) => ({ id: `i${i + 1}`, date, text, amount, accountId: BANK, needsReceipt: false }))
+export const incomeDone: Record<string, Target> = Object.fromEntries(INCOME.map(([, , , cc, cat], i) => [`i${i + 1}`, one(cc, cat)]))
+
+/** Flight minutes per year and aircraft that are not in the Bordbuch of the prototype (before it starts; for the running year January to September). */
+export const EARLIER_MINUTES: Record<string, Record<string, number>> = {
+  '2024': { 'OE-DZA': 7200, 'OE-KFR': 4200, 'OE-AXB': 3000 },
+  '2025': { 'OE-DZA': 7800, 'OE-KFR': 4500, 'OE-AXB': 3300 },
+  '2026': { 'OE-DZA': 6900, 'OE-KFR': 3900, 'OE-AXB': 2700 },
+}
 
 /** Released periods ("YYYY-MM"): every month up to September 2026. Their bookings cannot be changed any more. */
 export interface Released { by: string; /** ISO */ at: string }

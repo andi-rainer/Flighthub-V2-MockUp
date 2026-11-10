@@ -1,11 +1,12 @@
 import clsx from 'clsx'
-import { FilePlus2, Lock, Plus, Sparkles } from 'lucide-react'
+import { ArrowLeftRight, FilePlus2, Lock, Plus, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { eur, type BankLine } from '../../data'
 import { Badge, Button, Card, Drawer, Segmented, usePaging } from '../../ui'
 import { TODAY_ISO } from '../../state'
 import { dmy } from '../manifest/data'
 import { Field, field } from '../tickets/parts'
+import AccountStrip, { Transfer } from './AccountStrip'
 import AwaitingMoney from './AwaitingMoney'
 import { useDetail } from './Details'
 import { amountOk, codingOk, FilterBar, inRange, isFiltered, NO_FILTERS, textOk, type Filters } from './filters'
@@ -31,7 +32,7 @@ const monthRange = (m: string) => ({ from: `${m}-01`, to: `${m}-${String(new Dat
 export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: JournalPreset }) {
   const [view, setView] = useState<View>(preset?.todo ? 'bearbeiten' : 'alle')
   const [f, setF] = useState<Filters>({ ...NO_FILTERS, account: preset?.account ?? '', ...(preset?.month ? monthRange(preset.month) : {}) })
-  const [creating, setCreating] = useState<null | 'receipt' | 'line'>(null)
+  const [creating, setCreating] = useState<null | 'receipt' | 'line' | 'transfer'>(null)
   const [bulk, setBulk] = useState(false)
   const { show, node } = useDetail(ledger)
 
@@ -51,13 +52,15 @@ export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: J
         <Segmented<View> value={view} onChange={setView} options={[{ value: 'alle', label: `Alle (${items.length})` }, { value: 'bearbeiten', label: `Zu bearbeiten (${todo.length})` }]} />
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => setCreating('line')}><Plus size={16} /> Buchung erfassen</Button>
+          <Button onClick={() => setCreating('transfer')}><ArrowLeftRight size={16} /> Umbuchung</Button>
           <Button onClick={() => setCreating('receipt')}><FilePlus2 size={16} /> Beleg erstellen</Button>
           <Button>Kontoauszug importieren</Button>
           {view === 'bearbeiten' && <Button variant="primary" disabled={safe.length === 0} onClick={() => setBulk(true)}>{safe.length} sichere prüfen</Button>}
         </div>
       </div>
 
-      <FilterBar value={f} onChange={setF} ledger={ledger} accounts />
+      <AccountStrip ledger={ledger} value={f.account} onChange={(account) => setF({ ...f, account })} />
+      <FilterBar value={f} onChange={setF} ledger={ledger} />
       {view === 'bearbeiten' && <AwaitingMoney />}
 
       <Card className="overflow-hidden">
@@ -81,6 +84,7 @@ export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: J
 
       {node}
       {creating === 'receipt' && <ReceiptForm ledger={ledger} onClose={() => setCreating(null)} />}
+      {creating === 'transfer' && <Transfer ledger={ledger} onClose={() => setCreating(null)} />}
       {creating === 'line' && <NewLine ledger={ledger} account={f.account} onClose={() => setCreating(null)} />}
       {bulk && <BulkConfirm lines={safe} ledger={ledger} onClose={() => setBulk(false)} />}
     </div>
@@ -107,7 +111,7 @@ function Line({ line: l, status, ledger, onOpen, onAssign, onInvoice }: { line: 
 
       <div className="min-w-0">
         <div className="text-sm font-medium leading-snug" title={l.bookingText ? `Bank: ${l.text}` : undefined}>{l.bookingText ?? l.text}</div>
-        <div className="flex items-center gap-1.5 text-xs text-muted">{ledger.accountName(l.accountId)}{l.check && <span title={l.check.text} className={l.check.tone === 'ok' ? 'text-ok' : 'text-warn'}><Sparkles size={12} /></span>}</div>
+        <div className="flex items-center gap-1.5 text-xs text-muted"><span className="rounded bg-slate-100 px-1.5 py-px">{ledger.accountName(l.accountId)}</span>{l.check && <span title={l.check.text} className={l.check.tone === 'ok' ? 'text-ok' : 'text-warn'}><Sparkles size={12} /></span>}</div>
       </div>
 
       <div className="flex min-w-0 flex-wrap items-center gap-1">

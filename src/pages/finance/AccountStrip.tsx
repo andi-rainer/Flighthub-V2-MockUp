@@ -1,60 +1,61 @@
-import { ArrowLeftRight, Plus } from 'lucide-react'
+import clsx from 'clsx'
+import { Pencil, Plus } from 'lucide-react'
 import { useState } from 'react'
-import { eur, type MoneyAccount } from '../../data'
+import { AUSLAGE_ID, eur, type MoneyAccount } from '../../data'
 import { useSession } from '../../session/session'
-import { Badge, Button, Card, Drawer, Stat, Switch } from '../../ui'
+import { Button, Drawer, Switch } from '../../ui'
 import { TODAY_ISO } from '../../state'
-import { dmy } from '../manifest/data'
 import { Field, field } from '../tickets/parts'
 import { type Ledger } from './ledger'
-import { cents, euros } from './parts'
+import { cents } from './parts'
 import { isTodo, lineStatus } from './status'
 
 const KIND = { bank: 'Bankkonto', bar: 'Bargeld', spar: 'Sparbuch' } as const
 const HINT = { bank: 'Bank oder IBAN', bar: 'Wo liegt das Bargeld?', spar: 'Bank oder Nummer' } as const
 
-/** The accounts of the club and what is on them. Money moves between them by a transfer; every posting stays in the bookings. */
-export default function MoneyAccounts({ ledger, onShow }: { ledger: Ledger; onShow: (accountId: string) => void }) {
+/**
+ * The accounts of the club above the bookings: what is on each one, what is still to do on it. A click filters the bookings to that account,
+ * so "what is booked where" is one glance. Money moves between accounts by a transfer; every posting stays in the bookings.
+ */
+export default function AccountStrip({ ledger, value, onChange }: { ledger: Ledger; value: string; onChange: (accountId: string) => void }) {
   const [form, setForm] = useState<MoneyAccount | 'new' | null>(null)
-  const [moving, setMoving] = useState(false)
+  const [archived, setArchived] = useState(false)
   const active = ledger.accounts.filter((a) => !a.archived)
-  const sum = (k?: MoneyAccount['kind']) => active.filter((a) => !k || a.kind === k).reduce((n, a) => n + ledger.balanceOf(a.id), 0)
-  const rows = ledger.accounts.map((a) => {
-    const lines = ledger.lines.filter((l) => l.accountId === a.id)
-    return { a, balance: ledger.balanceOf(a.id), todo: lines.filter((l) => isTodo(lineStatus(l, ledger))).length, count: lines.length, last: lines.reduce((d, l) => (l.date > d ? l.date : d), '') }
-  }).sort((x, y) => Number(!!x.a.archived) - Number(!!y.a.archived))
+  const old = ledger.accounts.filter((a) => a.archived)
+  const todoOf = (id: string) => ledger.lines.filter((l) => l.accountId === id && isTodo(lineStatus(l, ledger))).length
+  const toggle = (id: string) => onChange(value === id ? '' : id)
+  const card = (id: string, selected: boolean) => clsx('group relative rounded-xl border p-3 text-left', selected ? 'border-brand bg-brand-soft' : 'border-line bg-surface hover:border-slate-300')
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat compact label="Gesamt" value={eur(sum())} hint={`${active.length} Konten`} />
-        <Stat compact label="Bankkonten" value={eur(sum('bank'))} />
-        <Stat compact label="Bargeld" value={eur(sum('bar'))} />
-        <Stat compact label="Sparbücher" value={eur(sum('spar'))} />
+    <div className="space-y-2">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+        <button onClick={() => onChange('')} className={card('', value === '')}>
+          <div className="text-xs font-medium text-muted">Alle Konten</div>
+          <div className="text-lg font-semibold tabular-nums">{eur(active.reduce((n, a) => n + ledger.balanceOf(a.id), 0))}</div>
+          <div className="text-xs text-muted">{active.length} Konten</div>
+        </button>
+        {[...active, ...(archived ? old : [])].map((a) => {
+          const todo = todoOf(a.id)
+          return (
+            <div key={a.id} className={clsx(card(a.id, value === a.id), a.archived && 'opacity-60')}>
+              <button onClick={() => toggle(a.id)} className="block w-full text-left" aria-pressed={value === a.id}>
+                <div className="truncate pr-6 text-xs font-medium text-muted">{a.name}</div>
+                <div className={clsx('text-lg font-semibold tabular-nums', ledger.balanceOf(a.id) < 0 && 'text-bad')}>{eur(ledger.balanceOf(a.id))}</div>
+                <div className="truncate text-xs text-muted">{KIND[a.kind]} · {todo > 0 ? <span className="font-medium text-amber-900">{todo} zu bearbeiten</span> : 'alles zugeordnet'}</div>
+              </button>
+              <button onClick={() => setForm(a)} aria-label={`${a.name} bearbeiten`} className="absolute right-2 top-2 rounded p-1 text-muted opacity-60 hover:bg-slate-100 hover:opacity-100"><Pencil size={13} /></button>
+            </div>
+          )
+        })}
+        <button onClick={() => toggle(AUSLAGE_ID)} className={card(AUSLAGE_ID, value === AUSLAGE_ID)} aria-pressed={value === AUSLAGE_ID}>
+          <div className="text-xs font-medium text-muted">Auslagen</div>
+          <div className="text-lg font-semibold tabular-nums">{ledger.lines.filter((l) => l.accountId === AUSLAGE_ID).length}</div>
+          <div className="text-xs text-muted">privat bezahlt, gutgeschrieben</div>
+        </button>
+        <button onClick={() => setForm('new')} className="flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-line p-3 text-sm text-muted hover:border-brand hover:text-brand"><Plus size={15} /> Konto anlegen</button>
       </div>
-
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button onClick={() => setMoving(true)}><ArrowLeftRight size={16} /> Umbuchung</Button>
-        <Button variant="primary" onClick={() => setForm('new')}><Plus size={16} /> Konto anlegen</Button>
-      </div>
-
-      <Card className="divide-y divide-line">
-        {rows.map(({ a, balance, todo, count, last }) => (
-          <div key={a.id} className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 ${a.archived ? 'opacity-60' : ''}`}>
-            <button onClick={() => setForm(a)} className="min-w-0 flex-1 basis-48 text-left">
-              <span className="flex items-center gap-2 font-medium">{a.name}<Badge>{KIND[a.kind]}</Badge>{a.archived && <Badge tone="neutral">Archiviert</Badge>}</span>
-              <span className="block truncate text-xs text-muted">{a.detail || ' '}</span>
-            </button>
-            <div className="w-40 text-xs text-muted">{count} Buchungen{last && <> · zuletzt {dmy(last)}</>}</div>
-            <div className="w-28">{todo > 0 ? <Badge tone="warn">{todo} zu bearbeiten</Badge> : <span className="text-xs text-muted">alles zugeordnet</span>}</div>
-            <div className="w-32 text-right text-lg font-semibold tabular-nums">{eur(balance)}</div>
-            <Button onClick={() => onShow(a.id)}>Buchungen</Button>
-          </div>
-        ))}
-      </Card>
-
+      {old.length > 0 && <button onClick={() => setArchived(!archived)} className="text-xs text-brand">{archived ? 'Archivierte Konten ausblenden' : `${old.length} archivierte Konten anzeigen`}</button>}
       {form && <AccountForm key={form === 'new' ? 'new' : form.id} account={form === 'new' ? null : form} ledger={ledger} onClose={() => setForm(null)} />}
-      {moving && <Transfer ledger={ledger} onClose={() => setMoving(false)} />}
     </div>
   )
 }
@@ -93,7 +94,7 @@ function AccountForm({ account, ledger, onClose }: { account: MoneyAccount | nul
 }
 
 /** Money from one account to another: a posting on each, both booked at once. */
-function Transfer({ ledger, onClose }: { ledger: Ledger; onClose: () => void }) {
+export function Transfer({ ledger, onClose }: { ledger: Ledger; onClose: () => void }) {
   const { guarded } = useSession()
   const accounts = ledger.accounts.filter((a) => !a.archived)
   const [from, setFrom] = useState('')
