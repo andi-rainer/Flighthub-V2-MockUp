@@ -4,11 +4,13 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { aircraft, eur, members } from '../data'
 import { offeredFor } from '../kinds'
-import { useApp, type LogEntry, type Supply } from '../state'
+import { useSession } from '../session/session'
+import { useApp, type FlightCharge, type LogEntry, type Supply } from '../state'
 import MemberPicker from '../MemberPicker'
 import { Badge, Banner, Button, Card, Drawer, PageHeader, Segmented, Switch, usePaging } from '../ui'
 import { openReceiptFile } from './finance/parts'
 import { adjustText, FuelAdjustFields, FuelMissingNotice, useFuelAdjust } from './fuel/FuelAdjust'
+import { BillingBar, ChargeDrawer, FlightBilling } from './logbook/Billing'
 import { SupplyFields, useSupplyForm } from './SupplyReceipt'
 const KIND_BAR: Record<string, string> = { Sprungbetrieb: 'bg-brand', Charter: 'bg-warn', Schulung: 'bg-ok', Privat: 'bg-slate-400' } // other kinds: grey
 /** Counter readings (hours) of each aircraft after the newest entry. */
@@ -19,14 +21,19 @@ const fmtHm = (min: number) => `${Math.floor(min / 60)}:${String(min % 60).padSt
 const fmtCounter = (h: number) => { const m = Math.round(h * 60); return `${Math.floor(m / 60).toLocaleString('de-AT')}:${String(m % 60).padStart(2, '0')}` }
 
 export default function Logbook() {
-  const { entries, addEntry, patchEntry, flights, kinds, restFuel, setRestFuel, aircraftData, persona } = useApp()
+  const { entries, addEntry, patchEntry, flights, chargeFlights, kinds, restFuel, setRestFuel, aircraftData, persona, can } = useApp()
+  const { guarded } = useSession()
+  const canCharge = can('billing.flights.charge')
+  const [picked, setPicked] = useState<string[]>([])
+  const [charging, setCharging] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [params] = useSearchParams()
   const [adding, setAdding] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
-  const [reg, setReg] = useState(params.get('flugzeug') ?? 'OE-DZA')
+  const [reg, setReg] = useState(params.get('flugzeug') ?? (params.get('nur') === 'verrechnen' ? '' : 'OE-DZA'))
   const [pilot, setPilot] = useState(() => (params.get('nur') === 'beleg' ? members.find((m) => m.id === persona.memberId)?.name ?? '' : ''))
   const [kind, setKind] = useState('')
-  const [only, setOnly] = useState<'' | 'beleg' | 'offen'>(params.get('nur') === 'beleg' ? 'beleg' : '')
+  const [only, setOnly] = useState<'' | 'beleg' | 'offen'>(params.get('nur') === 'beleg' ? 'beleg' : params.get('nur') === 'verrechnen' ? 'offen' : '')
   const [open, setOpen] = useState<LogEntry | null>(null)
   const [late, setLate] = useState<{ id: number; key: 'fuel' | 'oil' } | null>(null)
   const { ledger } = useApp()
@@ -36,20 +43,24 @@ export default function Logbook() {
   const mineMissing = entries.filter((e) => e.pilot === meName && e.fuel?.receipt.state === 'fehlt')
   const mineOn = pilot === meName && only === 'beleg'
   const showMine = () => { setReg(mineMissing[0]?.aircraft ?? reg); setPilot(meName ?? ''); setOnly('beleg') }
-  const ofAircraft = entries.filter((e) => e.aircraft === reg)
-  const openFlight = (e: LogEntry) => flights.find((f) => f.logId === e.id)?.state === 'offen'
+  const ofAircraft = reg ? entries.filter((e) => e.aircraft === reg) : entries
+  const flightOf = (e: LogEntry) => flights.find((f) => f.logId === e.id)
+  const openFlight = (e: LogEntry) => flightOf(e)?.state === 'offen'
   const missingOf = (e: LogEntry) => [e.fuel, e.oil].filter((s) => s?.receipt.state === 'fehlt').length
   const missing = ofAircraft.reduce((n, e) => n + missingOf(e), 0)
   const toCharge = ofAircraft.filter(openFlight).length
   // Counter after each entry: start with the current reading, subtract newer entries going back in time.
   const counter = new Map<number, number>()
-  let running = COUNTER[reg] ?? 0
-  for (const e of ofAircraft) { counter.set(e.id, running); running -= e.minutes / 60 }
+  for (const a of aircraft) { let running = COUNTER[a.reg] ?? 0; for (const e of entries.filter((x) => x.aircraft === a.reg)) { counter.set(e.id, running); running -= e.minutes / 60 } }
 
   const rows = ofAircraft.filter((e) => (!pilot || e.pilot === pilot) && (!kind || e.kind === kind) && (only !== 'beleg' || missingOf(e) > 0) && (only !== 'offen' || openFlight(e)))
   const paging = usePaging(rows, `${reg}|${pilot}|${kind}|${only}|${entries.length}`)
   const shown = paging.rows
   const pilots = [...new Set(ofAircraft.map((e) => e.pilot))].sort()
+  const pickable = shown.filter(openFlight)
+  const pickedFlights = flights.filter((f) => picked.includes(f.id) && f.state === 'offen')
+  const toggle = (id: string) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id])
+  const allPicked = pickable.length > 0 && pickable.every((e) => picked.includes(flightOf(e)!.id))
 
   /** An entry changes the tank: it starts with the content (after de-fueling or a correction), the flight burns fuel, an uplift adds to it. */
   const applyTank = (e: LogEntry) => {
@@ -69,11 +80,11 @@ export default function Logbook() {
 
   return (
     <>
-      <PageHeader title={`Bordbuch ${reg}`} actions={<Button variant="primary" onClick={() => { setSaved(null); setAdding(true) }}><Plus size={16} /> Neuer Eintrag</Button>} />
+      <PageHeader title={reg ? `Bordbuch ${reg}` : 'Bordbuch, alle Flugzeuge'} actions={<Button variant="primary" disabled={!reg} onClick={() => { setSaved(null); setAdding(true) }}><Plus size={16} /> Neuer Eintrag</Button>} />
       {saved && <div className="mb-3"><Banner>{saved}</Banner></div>}
       {!mineOn && <FuelMissingNotice className="mb-3" onFilter={showMine} />}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <select aria-label="Flugzeug" value={reg} onChange={(e) => { setReg(e.target.value); setPilot('') }} className={sel}>{aircraft.map((a) => <option key={a.id}>{a.reg}</option>)}</select>
+        <select aria-label="Flugzeug" value={reg} onChange={(e) => { setReg(e.target.value); setPilot(''); setPicked([]) }} className={sel}><option value="">Alle Flugzeuge</option>{aircraft.map((a) => <option key={a.id}>{a.reg}</option>)}</select>
         <MemberPicker ariaLabel="Pilot" className="w-56" clearable placeholder="Alle Piloten" value={members.find((m) => m.name === pilot)?.id} allow={(m) => pilots.includes(m.name)} onChange={(id) => setPilot(members.find((m) => m.id === id)?.name ?? '')} />
         <select aria-label="Betriebsart" value={kind} onChange={(e) => setKind(e.target.value)} className={sel}><option value="">Alle Betriebsarten</option>{[...new Set([...kinds.map((k) => k.name), ...entries.map((e) => e.kind)])].map((k) => <option key={k}>{k}</option>)}</select>
         {mineMissing.length > 0 && <button onClick={() => (mineOn ? (setPilot(''), setOnly('')) : showMine())} className={clsx('h-9 rounded-full border px-3 text-sm font-medium', mineOn ? 'border-brand bg-brand-soft text-brand' : 'border-line text-warn hover:bg-slate-50')}>Meine Flüge ohne Tankbeleg · {mineMissing.length}</button>}
@@ -87,7 +98,9 @@ export default function Logbook() {
           <table className="w-full text-sm [&_td]:!px-2 [&_th]:!px-2 sm:[&_td]:!px-2.5 sm:[&_th]:!px-2.5">
             <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-muted [&_th]:whitespace-nowrap">
               <tr>
+                {canCharge && <th className="w-8 px-3 py-2"><input type="checkbox" aria-label="Alle zu verrechnenden wählen" disabled={pickable.length === 0} checked={allPicked} onChange={() => setPicked(allPicked ? picked.filter((id) => !pickable.some((e) => flightOf(e)?.id === id)) : [...new Set([...picked, ...pickable.map((e) => flightOf(e)!.id)])])} /></th>}
                 <th className="px-3 py-2">Datum</th>
+                {!reg && <th className="px-3 py-2">Flugzeug</th>}
                 <th className="hidden px-3 py-2 2xl:table-cell">Strecke</th>
                 <th className="hidden px-3 py-2 xl:table-cell" title="Off-block · Take-off · Landing · On-block">Zeiten</th>
                 <th className="px-3 py-2">Pilot</th>
@@ -100,10 +113,12 @@ export default function Logbook() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {shown.length === 0 && <tr><td colSpan={10} className="py-10 text-center text-muted">Keine Einträge für diese Auswahl.</td></tr>}
+              {shown.length === 0 && <tr><td colSpan={12} className="py-10 text-center text-muted">Keine Einträge für diese Auswahl.</td></tr>}
               {shown.map((e) => (
                 <tr key={e.id} onClick={() => setOpen(e)} className="cursor-pointer hover:bg-slate-50">
+                  {canCharge && <td className="px-3 py-2" onClick={(ev) => ev.stopPropagation()}>{openFlight(e) && <input type="checkbox" aria-label={`Flug ${e.date} verrechnen`} checked={picked.includes(flightOf(e)!.id)} onChange={() => toggle(flightOf(e)!.id)} />}</td>}
                   <td className="whitespace-nowrap px-3 py-2"><span className="flex items-center gap-2"><i className={clsx('h-4 w-1 rounded-full', KIND_BAR[e.kind])} title={e.kind} /><span className="hidden sm:inline">{e.date}</span><span className="sm:hidden">{e.date.slice(0, 6)}{e.date.slice(8)}</span>{e.from !== e.to && <span className="font-mono text-xs text-muted 2xl:hidden" title="Strecke">{e.from}→{e.to}</span>}</span></td>
+                  {!reg && <td className="whitespace-nowrap px-3 py-2 font-medium">{e.aircraft}</td>}
                   <td className="hidden whitespace-nowrap px-3 py-2 font-mono text-xs 2xl:table-cell">{e.from === e.to ? e.from : `${e.from} → ${e.to}`}</td>
                   <td className="hidden whitespace-nowrap px-3 py-2 font-mono text-xs text-muted xl:table-cell">{e.times ? `${e.times.off} · ${e.times.to} · ${e.times.ld} · ${e.times.on}` : '–'}</td>
                   <td className="max-w-[7.5rem] truncate whitespace-nowrap px-3 py-2 sm:max-w-none">{e.pilot}</td>
@@ -130,8 +145,11 @@ export default function Logbook() {
         {paging.bar}
       </Card>
 
-      <Drawer open={!!open} title={open ? `Eintrag ${open.date} · ${open.aircraft}` : ''} onClose={() => setOpen(null)}>
-        {open && <Detail e={open} counter={counter.get(open.id) ?? 0} charged={!openFlight(open)} />}
+      {canCharge && <BillingBar flights={pickedFlights} onClear={() => setPicked([])} onReview={() => setCharging(true)} />}
+      {charging && <ChargeDrawer flights={pickedFlights} onClose={() => setCharging(false)} onDone={(n) => { setPicked([]); setSaved(`${n} ${n === 1 ? 'Flug' : 'Flüge'} verrechnet. Die Betriebskonten sind belastet.`) }} />}
+      <Drawer open={!!open} title={open ? `Eintrag ${open.date} · ${open.aircraft}` : ''} onClose={() => { setOpen(null); setEditing(false) }}
+        footer={open && canCharge && openFlight(open) ? <Button variant="primary" size="lg" className="w-full" disabled={editing} onClick={() => { const f = flightOf(open)!; guarded('billing.flights.charge', () => { chargeFlights([f.id]); setPicked(picked.filter((id) => id !== f.id)); setSaved('1 Flug verrechnet. Die Betriebskonten sind belastet.') }); setOpen(null) }}>{eur(flightOf(open)!.amount)} verrechnen</Button> : undefined}>
+        {open && <Detail e={open} counter={counter.get(open.id) ?? 0} flight={flightOf(open)} onEditing={setEditing} />}
       </Drawer>
       {late && entries.find((x) => x.id === late.id)?.[late.key] && <LateReceipt key={`${late.id}${late.key}`} entry={entries.find((x) => x.id === late.id)!} which={late.key} onClose={() => setLate(null)} onDone={(sup) => { const e = entries.find((x) => x.id === late.id)!; const old = e[late.key]?.amount; patchEntry(late.id, { [late.key]: sup }); if (late.key === 'fuel' && old !== undefined && sup.amount !== old) setRestFuel(e.aircraft, Math.max(0, Math.round(((restFuel[e.aircraft] ?? 0) + sup.amount - old) * 10) / 10)); setLate(null) }} />}
     </>
@@ -149,8 +167,8 @@ function SupplyChip({ icon, label, s, onFix }: { icon: React.ReactNode; label: s
   )
 }
 
-function Detail({ e, counter, charged }: { e: LogEntry; counter: number; charged: boolean }) {
-  const { ledger } = useApp()
+function Detail({ e, counter, flight, onEditing }: { e: LogEntry; counter: number; flight?: FlightCharge; onEditing: (editing: boolean) => void }) {
+  const { ledger, can } = useApp()
   const supply = (s?: Supply) => {
     if (!s) return 'nein'
     const r = s.receiptId ? ledger.receipts.find((x) => x.id === s.receiptId) : undefined
@@ -162,9 +180,9 @@ function Detail({ e, counter, charged }: { e: LogEntry; counter: number; charged
     ['Off-block / Take-off', e.times ? `${e.times.off} / ${e.times.to}` : '–'], ['Landing / On-block', e.times ? `${e.times.ld} / ${e.times.on}` : '–'],
     ['Blockzeit', e.blockMin ? fmt(e.blockMin) : '–'], ['Flugzeit', fmt(e.minutes)], ['Landungen', String(e.landings)], ['Zähler danach', `${fmtCounter(counter)} h`],
     ['Treibstoff', supply(e.fuel)], ...(e.fuelAdjust ? [['Tank', adjustText(e.fuelAdjust)] as [string, React.ReactNode]] : []), ['Öl', supply(e.oil)],
-    ['Quelle', e.afp === 'ja' ? (e.kind === 'Sprungbetrieb' ? 'AFP' : 'Flug beginnen') : 'von Hand oder aus der Zeit vor V2'], ['Verrechnung', charged ? 'verrechnet' : 'wartet auf den Kassier'],
+    ['Quelle', e.afp === 'ja' ? (e.kind === 'Sprungbetrieb' ? 'AFP' : 'Flug beginnen') : 'von Hand oder aus der Zeit vor V2'], ['Verrechnung', !flight || flight.state === 'verrechnet' ? 'verrechnet' : 'wartet auf den Kassier'],
   ]
-  return <dl className="divide-y divide-line text-sm">{rows.map(([k, v]) => <div key={k} className="flex justify-between gap-4 py-2.5"><dt className="text-muted">{k}</dt><dd className="text-right font-medium">{v}</dd></div>)}</dl>
+  return <><dl className="divide-y divide-line text-sm">{rows.map(([k, v]) => <div key={k} className="flex justify-between gap-4 py-2.5"><dt className="text-muted">{k}</dt><dd className="text-right font-medium">{v}</dd></div>)}</dl>{flight && can('billing.flights.charge') && <FlightBilling flight={flight} onEditing={onEditing} />}</>
 }
 
 function NewEntry({ aircraft: reg, last, onCancel, onSave }: { aircraft: string; last?: LogEntry; onCancel: () => void; onSave: (e: LogEntry, note: string) => void }) {

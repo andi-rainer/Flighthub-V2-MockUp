@@ -93,6 +93,7 @@ export interface FuelAdjust { kind: 'defuel' | 'korrektur'; liters: number; reas
 export interface LogEntry { id: number; aircraft: string; times?: FlightTimes; blockMin?: number; afp?: string; date: string; pilot: string; kind: string; from: string; to: string; minutes: number; landings: number; fuel?: Supply; fuelAdjust?: FuelAdjust; oil?: Supply }
 
 const seedEntries: LogEntry[] = [
+  { id: 4, aircraft: 'OE-KFR', afp: 'alt', date: '03.11.2026', pilot: 'Anna Berger', kind: 'Charter', from: 'LOLW', to: 'LOLW', minutes: 95, landings: 2 },
   { id: 3, aircraft: 'OE-DZA', afp: 'alt', date: '31.10.2026', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', from: 'LOLW', to: 'LOLW', minutes: 372, landings: 14, fuel: { amount: 85, receipt: { state: 'ja' } }, oil: { amount: 0.5, receipt: { state: 'entfaellt' } } },
   { id: 2, aircraft: 'OE-DZA', afp: 'alt', date: '24.10.2026', pilot: 'Eva Steiner', kind: 'Schulung', from: 'LOLW', to: 'LOLW', minutes: 65, landings: 6 },
   { id: 1, aircraft: 'OE-DZA', afp: 'alt', date: '17.10.2026', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', from: 'LOLW', to: 'LOLW', minutes: 301, landings: 11, fuel: { amount: 62, receipt: { state: 'fehlt' } } },
@@ -133,7 +134,7 @@ const SEED_RATE = 5.15
 
 const seedFlights: FlightCharge[] = [
   { id: 'f1', logId: 3, date: '31.10.', aircraft: 'OE-DZA', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', minutes: 372, amount: 372 * SEED_RATE, split: seedSplit('Sprungbetrieb', 'Bernd Huber'), state: 'offen' },
-  { id: 'f4', date: '03.11.', aircraft: 'OE-KFR', pilot: 'Anna Berger', kind: 'Charter', minutes: 95, amount: 95 * SEED_RATE, split: [{ who: 'Betriebskonto Anna Berger', memberId: 'm1', percent: 60 }, { who: 'Betriebskonto David Gruber', memberId: 'm4', percent: 40 }], state: 'offen' },
+  { id: 'f4', logId: 4, date: '03.11.', aircraft: 'OE-KFR', pilot: 'Anna Berger', kind: 'Charter', minutes: 95, amount: 95 * SEED_RATE, split: [{ who: 'Betriebskonto Anna Berger', memberId: 'm1', percent: 60 }, { who: 'Betriebskonto David Gruber', memberId: 'm4', percent: 40 }], state: 'offen' },
   { id: 'f2', logId: 2, date: '24.10.', aircraft: 'OE-DZA', pilot: 'Eva Steiner', kind: 'Schulung', minutes: 65, amount: 65 * SEED_RATE, split: seedSplit('Schulung', 'Eva Steiner'), state: 'verrechnet' },
   { id: 'f3', logId: 1, date: '17.10.', aircraft: 'OE-DZA', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', minutes: 301, amount: 301 * SEED_RATE, split: seedSplit('Sprungbetrieb', 'Bernd Huber'), state: 'verrechnet' },
 ]
@@ -153,6 +154,8 @@ interface App {
   weights: Record<string, number>; setWeight: (memberId: string, kg: number) => void
   entries: LogEntry[]; addEntry: (e: LogEntry) => void; patchEntry: (id: number, p: Partial<LogEntry>) => void
   flights: FlightCharge[]; chargeFlights: (ids: string[]) => void
+  /** The treasurer corrects who pays (before the flight is charged). */
+  patchFlight: (id: string, p: Partial<Pick<FlightCharge, 'split'>>) => void
   apps: Application[]; setApps: (a: Application[]) => void
   forms: FormTemplate[]; setForms: (f: FormTemplate[]) => void
   profileOf: (memberId: string) => Profile; setProfile: (memberId: string, p: Partial<Profile>) => void
@@ -310,6 +313,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       patchEntry: (id, p) => setEntries((es) => es.map((e) => (e.id === id ? { ...e, ...p } : e))),
       flights,
+      patchFlight: (id, p) => setFlights((fs) => fs.map((f) => (f.id === id && f.state === 'offen' ? { ...f, ...p } : f))),
       chargeFlights: (ids) => {
         for (const f of flights.filter((x) => ids.includes(x.id) && x.state === 'offen'))
           for (const s of f.split) if (s.memberId) ledger.charge(s.memberId, (f.amount * s.percent) / 100, `Flug ${f.date} ${f.aircraft}, ${f.minutes} min (${s.percent} %)`)

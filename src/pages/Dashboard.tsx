@@ -58,8 +58,8 @@ function Treasurer() {
     <>
       <PageHeader title={`Guten Morgen, ${members.find((m) => m.id === persona.memberId)!.name.split(' ')[0]}`} />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <Task to="/finanzen?tab=verrechnen" n={toCharge} label="Flüge verrechnen" hint="aus dem Bordbuch, wartet auf deine Bestätigung" />
-        <Task to="/finanzen?tab=auslagen" n={openExpenses} label="Auslagen prüfen" hint="Bar-Auslagen von Mitgliedern warten auf deine Prüfung" />
+        <Task to="/bordbuch?nur=verrechnen" n={toCharge} label="Flüge verrechnen" hint="aus dem Bordbuch, wartet auf deine Bestätigung" />
+        <Task to="/finanzen?tab=bank&offen=1" n={openExpenses} label="Auslagen prüfen" hint="Bar-Auslagen von Mitgliedern warten auf deine Prüfung" />
         <Task to="/finanzen?tab=bank" n={openLines} label="Bankzeilen zuordnen" hint="Vorschläge der KI warten auf dich" />
         <Task to="/finanzen?tab=bank" n={noReceipt} label="Belege fehlen" hint="Buchungen ohne Rechnung oder Lieferschein" />
         <Task to="/mitglieder?tab=antraege" n={decide} label="Anträge entscheiden" hint="unterschrieben, warten auf Genehmigung" />

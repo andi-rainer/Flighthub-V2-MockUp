@@ -1,14 +1,16 @@
 import clsx from 'clsx'
-import { ArrowLeftRight, FilePlus2, Lock, Plus, Sparkles } from 'lucide-react'
+import { ArrowLeftRight, FilePlus2, Lock, Plus, Receipt, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { eur, type BankLine } from '../../data'
 import { Badge, Button, Card, Drawer, Segmented, usePaging } from '../../ui'
-import { TODAY_ISO } from '../../state'
+import { TODAY_ISO, useApp } from '../../state'
 import { dmy } from '../manifest/data'
 import { Field, field } from '../tickets/parts'
 import AccountStrip, { Transfer } from './AccountStrip'
 import AwaitingMoney from './AwaitingMoney'
 import { useDetail } from './Details'
+import { ExpenseDrawer } from './Expense'
+import ExpenseQueue from './Expenses'
 import { amountOk, codingOk, FilterBar, inRange, isFiltered, NO_FILTERS, textOk, type Filters } from './filters'
 import { type Ledger } from './ledger'
 import { cents, confLabel, Dot, SAFE } from './parts'
@@ -32,9 +34,12 @@ const monthRange = (m: string) => ({ from: `${m}-01`, to: `${m}-${String(new Dat
 export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: JournalPreset }) {
   const [view, setView] = useState<View>(preset?.todo ? 'bearbeiten' : 'alle')
   const [f, setF] = useState<Filters>({ ...NO_FILTERS, account: preset?.account ?? '', ...(preset?.month ? monthRange(preset.month) : {}) })
-  const [creating, setCreating] = useState<null | 'receipt' | 'line' | 'transfer'>(null)
+  const [creating, setCreating] = useState<null | 'receipt' | 'line' | 'transfer' | 'expense'>(null)
   const [bulk, setBulk] = useState(false)
   const { show, node } = useDetail(ledger)
+  const { can } = useApp()
+  const reviewExpenses = can('billing.bank.manage')
+  const expensesOpen = reviewExpenses ? ledger.expenses.filter((x) => x.status === 'offen').length : 0
 
   const items = ledger.lines.map((l) => ({ l, status: lineStatus(l, ledger) }))
   const todo = items.filter((i) => isTodo(i.status))
@@ -49,9 +54,10 @@ export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: J
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Segmented<View> value={view} onChange={setView} options={[{ value: 'alle', label: `Alle (${items.length})` }, { value: 'bearbeiten', label: `Zu bearbeiten (${todo.length})` }]} />
+        <Segmented<View> value={view} onChange={setView} options={[{ value: 'alle', label: `Alle (${items.length})` }, { value: 'bearbeiten', label: `Zu bearbeiten (${todo.length + expensesOpen})` }]} />
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => setCreating('line')}><Plus size={16} /> Buchung erfassen</Button>
+          <Button onClick={() => setCreating('expense')}><Receipt size={16} /> Auslage erfassen</Button>
           <Button onClick={() => setCreating('transfer')}><ArrowLeftRight size={16} /> Umbuchung</Button>
           <Button onClick={() => setCreating('receipt')}><FilePlus2 size={16} /> Beleg erstellen</Button>
           <Button>Kontoauszug importieren</Button>
@@ -61,6 +67,7 @@ export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: J
 
       <AccountStrip ledger={ledger} value={f.account} onChange={(account) => setF({ ...f, account })} />
       <FilterBar value={f} onChange={setF} ledger={ledger} />
+      {view === 'bearbeiten' && reviewExpenses && <ExpenseQueue ledger={ledger} />}
       {view === 'bearbeiten' && <AwaitingMoney />}
 
       <Card className="overflow-hidden">
@@ -84,6 +91,7 @@ export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: J
 
       {node}
       {creating === 'receipt' && <ReceiptForm ledger={ledger} onClose={() => setCreating(null)} />}
+      {creating === 'expense' && <ExpenseDrawer ledger={ledger} onClose={() => setCreating(null)} />}
       {creating === 'transfer' && <Transfer ledger={ledger} onClose={() => setCreating(null)} />}
       {creating === 'line' && <NewLine ledger={ledger} account={f.account} onClose={() => setCreating(null)} />}
       {bulk && <BulkConfirm lines={safe} ledger={ledger} onClose={() => setBulk(false)} />}
