@@ -31,10 +31,14 @@ export interface Coding { costCenterId: string; categoryId: string; amount: numb
 export interface ExpenseRequest {
   id: string; memberId: string; receiptId: string; description: string; /** ISO */ submitted: string
   status: 'offen' | 'gutgeschrieben' | 'abgelehnt'; rejectReason?: string; decidedBy?: string
+  /** Who submitted it, when the treasurer credited someone else (a wrong person was chosen). */
+  changedFrom?: string
   origin: 'Mitglied' | 'Bordbuch'
   /** What the member said it was for (fuel of an aircraft): the treasurer starts from it. */
   suggested?: { costCenterId: string; categoryId: string }
 }
+/** What the treasurer books of an expense: who gets the credit, the receipt as read, the cost coding and the booking text (empty: supplier and number). */
+export interface ExpenseBooking { memberId: string; receipt: NewReceipt; splits: Split[]; text?: string }
 export type { Released }
 
 /** The cost center coding of an amount: a booking on cost centers codes it by percent, other targets code nothing. */
@@ -101,10 +105,10 @@ export interface Ledger {
   /** A member hands in a cash expense: the receipt is kept, nothing is booked yet. Returns the id of the receipt. */
   submitExpense: (e: { memberId: string; receipt: NewReceipt; description: string; suggested?: ExpenseRequest['suggested']; origin: ExpenseRequest['origin'] }) => string
   /** The treasurer checked it: booked on cost centers and credited to the member. `receipt` is what was checked (corrected if needed). */
-  approveExpense: (id: string, receipt: NewReceipt, splits: Split[], by: string) => void
+  approveExpense: (id: string, e: ExpenseBooking, by: string) => void
   rejectExpense: (id: string, reason: string, by: string) => void
   /** A member paid privately: the invoice is booked on cost centers and the amount is credited to the member's Betriebskonto. */
-  bookExpense: (e: { memberId: string; receiptId?: string; receipt: NewReceipt; splits: Split[] }) => string
+  bookExpense: (e: ExpenseBooking & { receiptId?: string }) => string
   patchReceipt: (id: string, p: Partial<Pick<Receipt, 'splits'>>) => void
   createCashLine: (receiptId: string) => void
   addCostCenter: (name: string, kind: CostCenter['kind']) => void
@@ -207,17 +211,18 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
     return id
   }
 
-  const book = ({ memberId, receiptId, receipt, splits }: { memberId: string; receiptId?: string; receipt: NewReceipt; splits: Split[] }): string => {
+  const book = ({ memberId, receiptId, receipt, splits, text }: ExpenseBooking & { receiptId?: string }): string => {
       const date = postingDate(receipt.date)
       const lineId = newId('k')
       const rid = receiptId ?? newId('r')
       const who = members.find((m) => m.id === memberId)?.name ?? '?'
+      const what = text?.trim() || `${receipt.supplier}${receipt.number ? ` ${receipt.number}` : ''}`
       const mine = { name: receipt.file, supplier: receipt.supplier, number: receipt.number || undefined, amount: receipt.amount, date: receipt.date, note: receipt.note, fuel: receipt.fuel, splits: undefined, paidBy: memberId, lineId, suggestion: undefined }
       setReceipts((rs) => (receiptId ? rs.map((r) => (r.id === receiptId ? { ...r, ...mine } : r)) : [{ id: rid, source: receipt.source ?? 'Upload', ...mine }, ...rs]))
-      setLines((ls) => [{ id: lineId, date, text: `Auslage ${who}: ${receipt.supplier}${receipt.number ? ` ${receipt.number}` : ''}`, amount: -receipt.amount, accountId: AUSLAGE_ID, needsReceipt: true }, ...ls])
+      setLines((ls) => [{ id: lineId, date, text: `Auslage ${who}: ${what}`, amount: -receipt.amount, accountId: AUSLAGE_ID, needsReceipt: true }, ...ls])
       setDone((d) => ({ ...d, [lineId]: { kind: 'auslage', memberId, splits } }))
       setBalances((b) => ({ ...b, [memberId]: (b[memberId] ?? 0) + receipt.amount }))
-      addHistory(memberId, { date: dmOf(date), text: `Auslage: ${receipt.supplier}${receipt.number ? ` ${receipt.number}` : ''}`, amount: receipt.amount, receiptId: rid })
+      addHistory(memberId, { date: dmOf(date), text: `Auslage: ${what}`, amount: receipt.amount, receiptId: rid })
       say(`Auslage gebucht: ${eur(receipt.amount)} · ${who} gutgeschrieben`)
       return rid
     }
@@ -321,11 +326,12 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
       say(`Auslage eingereicht: ${eur(receipt.amount)}. Der Kassier prüft sie, danach wird sie gutgeschrieben.`)
       return rid
     },
-    approveExpense: (id, receipt, splits, by) => {
-      const x = expenses.find((e) => e.id === id)
+    approveExpense: (id, e, by) => {
+      const x = expenses.find((r) => r.id === id)
       if (!x || x.status !== 'offen') return
-      book({ memberId: x.memberId, receiptId: x.receiptId, receipt, splits })
-      setExpenses((all) => all.map((e) => (e.id === id ? { ...e, status: 'gutgeschrieben', decidedBy: by } : e)))
+      const { memberId } = e
+      book({ ...e, receiptId: x.receiptId })
+      setExpenses((all) => all.map((r) => (r.id === id ? { ...r, memberId, description: e.text?.trim() || r.description, changedFrom: memberId !== x.memberId ? x.memberId : undefined, status: 'gutgeschrieben', decidedBy: by } : r)))
     },
     rejectExpense: (id, reason, by) => {
       setExpenses((all) => all.map((e) => (e.id === id ? { ...e, status: 'abgelehnt', rejectReason: reason, decidedBy: by } : e)))

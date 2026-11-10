@@ -1,11 +1,15 @@
 import { useState } from 'react'
+import { Receipt as ReceiptIcon } from 'lucide-react'
 import { eur, members } from '../../data'
+import MemberPicker from '../../MemberPicker'
+import { useApp } from '../../state'
 import { useSession } from '../../session/session'
 import { Badge, Button, Card, Drawer, Segmented, usePaging } from '../../ui'
 import { dmy } from '../manifest/data'
 import { Field, field, useActor } from '../tickets/parts'
 import { captureOf, captureProblem, ReceiptCapture, toNewReceipt, type Captured } from './capture'
 import { type ExpenseRequest, type Ledger } from './ledger'
+import { ExpenseDrawer } from './Expense'
 import { openReceiptFile, perLiter } from './parts'
 
 type View = 'offen' | 'erledigt'
@@ -17,19 +21,23 @@ const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? '?'
 export default function Expenses({ ledger }: { ledger: Ledger }) {
   const [view, setView] = useState<View>('offen')
   const [open, setOpen] = useState<ExpenseRequest | null>(null)
+  const [creating, setCreating] = useState(false)
   const pending = ledger.expenses.filter((x) => x.status === 'offen')
   const rows = view === 'offen' ? pending : ledger.expenses.filter((x) => x.status !== 'offen')
   const paging = usePaging(rows, view)
   return (
     <div className="space-y-3">
-      <Segmented<View> value={view} onChange={setView} options={[{ value: 'offen', label: `Zur Prüfung (${pending.length})` }, { value: 'erledigt', label: 'Erledigt' }]} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Segmented<View> value={view} onChange={setView} options={[{ value: 'offen', label: `Zur Prüfung (${pending.length})` }, { value: 'erledigt', label: 'Erledigt' }]} />
+        <Button onClick={() => setCreating(true)}><ReceiptIcon size={16} /> Auslage erfassen</Button>
+      </div>
       <Card className="divide-y divide-line">
         {paging.rows.map((x) => {
           const r = ledger.receipts.find((y) => y.id === x.receiptId)
           return (
             <div key={x.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
               <div className="w-24 text-xs text-muted">{dmy(x.submitted)}</div>
-              <div className="w-36 truncate font-medium">{nameOf(x.memberId)}</div>
+              <div className="w-36 truncate font-medium" title={x.changedFrom ? `Eingereicht von ${nameOf(x.changedFrom)}` : undefined}>{nameOf(x.memberId)}{x.changedFrom && <span className="block text-xs font-normal text-muted">statt {nameOf(x.changedFrom)}</span>}</div>
               <div className="min-w-0 flex-1 basis-48"><div className="truncate">{x.description}</div><div className="truncate text-xs text-muted">{r?.supplier}{r?.number ? ` · ${r.number}` : ''}{r?.fuel ? ` · ${r.fuel.liters} L · ${perLiter(r.fuel.perLiter)}` : ''}</div></div>
               <Badge>{x.origin}</Badge>
               <div className="w-24 text-right font-semibold tabular-nums">{r ? eur(r.amount) : ''}</div>
@@ -40,6 +48,7 @@ export default function Expenses({ ledger }: { ledger: Ledger }) {
         {rows.length === 0 && <p className="p-6 text-center text-sm text-muted">{view === 'offen' ? 'Keine Auslage zu prüfen.' : 'Noch nichts erledigt.'}</p>}
         {paging.bar}
       </Card>
+      {creating && <ExpenseDrawer ledger={ledger} onClose={() => setCreating(false)} />}
       {open && <Review key={open.id} request={open} ledger={ledger} onClose={() => setOpen(null)} />}
     </div>
   )
@@ -50,6 +59,9 @@ function Review({ request: x, ledger, onClose }: { request: ExpenseRequest; ledg
   const { guarded } = useSession()
   const actor = useActor()
   const r = ledger.receipts.find((y) => y.id === x.receiptId)!
+  const { hasAccount } = useApp()
+  const [member, setMember] = useState(x.memberId)
+  const [text, setText] = useState(x.description)
   const [cap, setCap] = useState<Captured>(captureOf(r))
   const ccs = ledger.costCenters.filter((c) => !c.archived)
   const cats = ledger.categories.filter((c) => !c.archived && c.type === 'Kosten')
@@ -58,9 +70,9 @@ function Review({ request: x, ledger, onClose }: { request: ExpenseRequest; ledg
   const [rejecting, setRejecting] = useState(false)
   const [why, setWhy] = useState('')
   const fuel = cat === 'k-fuel'
-  const problem = captureProblem(cap, fuel) ?? (!cc || !cat ? 'Kostenstelle und Kostenart wählen.' : null)
+  const problem = captureProblem(cap, fuel) ?? (!member ? 'Mitglied wählen.' : !cc || !cat ? 'Kostenstelle und Kostenart wählen.' : null)
   const total = Number(cap.total.replace(',', '.')) || 0
-  const approve = () => { guarded('billing.bank.manage', () => ledger.approveExpense(x.id, toNewReceipt(cap, fuel, { source: r.source }), [{ costCenterId: cc, categoryId: cat, percent: 100 }], actor)); onClose() }
+  const approve = () => { guarded('billing.bank.manage', () => ledger.approveExpense(x.id, { memberId: member, receipt: toNewReceipt(cap, fuel, { source: r.source }), splits: [{ costCenterId: cc, categoryId: cat, percent: 100 }], text }, actor)); onClose() }
   const reject = () => { guarded('billing.bank.manage', () => ledger.rejectExpense(x.id, why.trim(), actor)); onClose() }
   return (
     <Drawer open title={`Auslage von ${nameOf(x.memberId)}`} onClose={onClose}
@@ -73,6 +85,11 @@ function Review({ request: x, ledger, onClose }: { request: ExpenseRequest; ledg
           <Field label="Grund für die Ablehnung (das Mitglied sieht ihn)"><input autoFocus aria-label="Grund" value={why} onChange={(e) => setWhy(e.target.value)} className={`${field} h-11 w-full`} /></Field>
         ) : (
           <>
+            <div className="block">Gutschrift für
+              <MemberPicker ariaLabel="Mitglied" className="mt-1" value={member || undefined} allow={(m) => hasAccount(m.id)} onChange={(id) => setMember(id ?? '')} />
+              {member !== x.memberId && member && <p className="mt-1 text-xs text-warn">Eingereicht von {nameOf(x.memberId)}. Die Gutschrift geht an {nameOf(member)}.</p>}
+            </div>
+            <Field label="Buchungstext"><input aria-label="Buchungstext" value={text} onChange={(e) => setText(e.target.value)} className={`${field} h-11 w-full`} /></Field>
             <ReceiptCapture value={cap} onChange={setCap} fuel={fuel} />
             <div className="grid grid-cols-2 gap-3">
               <Field label="Kostenstelle"><select aria-label="Kostenstelle" value={cc} onChange={(e) => setCc(e.target.value)} className={`${field} w-full`}><option value="">Bitte wählen</option>{ccs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>

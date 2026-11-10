@@ -14,6 +14,7 @@ import { type Ledger } from './ledger'
 export function ExpenseForm({ ledger, memberId, from, onDone, onCancel }: { ledger: Ledger; memberId?: string; from?: Receipt; onDone: () => void; onCancel?: () => void }) {
   const { hasAccount } = useApp()
   const [member, setMember] = useState(memberId ?? '')
+  const [text, setText] = useState(from?.note ?? '')
   const [cap, setCap] = useState<Captured>(from ? captureOf(from) : EMPTY_CAPTURE)
   const ccs = ledger.costCenters.filter((c) => !c.archived)
   const cats = ledger.categories.filter((c) => !c.archived && c.type === 'Kosten')
@@ -25,7 +26,7 @@ export function ExpenseForm({ ledger, memberId, from, onDone, onCancel }: { ledg
   const valid = !!member && !!cc && !!cat && !problem
   const name = members.find((m) => m.id === member)?.name
   const submit = () => {
-    ledger.bookExpense({ memberId: member, receiptId: from?.id, receipt: toNewReceipt(cap, fuel, { source: from?.source }), splits: [{ costCenterId: cc, categoryId: cat, percent: 100 }] })
+    ledger.bookExpense({ memberId: member, receiptId: from?.id, receipt: toNewReceipt(cap, fuel, { source: from?.source }), splits: [{ costCenterId: cc, categoryId: cat, percent: 100 }], text })
     onDone()
   }
   return (
@@ -35,6 +36,7 @@ export function ExpenseForm({ ledger, memberId, from, onDone, onCancel }: { ledg
           <MemberPicker ariaLabel="Mitglied" className="mt-1" value={member || undefined} allow={(m) => hasAccount(m.id)} onChange={(id) => setMember(id ?? '')} />
         </div>
       )}
+      <Field label="Buchungstext"><input aria-label="Buchungstext" value={text} onChange={(e) => setText(e.target.value)} placeholder="z. B. Schrauben für den Hangar" className={`${field} h-11 w-full`} /></Field>
       <ReceiptCapture value={cap} onChange={setCap} fuel={fuel} />
       <div className="grid grid-cols-2 gap-3">
         <Field label="Kostenstelle"><select aria-label="Kostenstelle" value={cc} onChange={(e) => setCc(e.target.value)} className={`${field} w-full`}><option value="">Bitte wählen</option>{ccs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
