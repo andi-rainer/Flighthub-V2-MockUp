@@ -32,13 +32,14 @@ const monthRange = (m: string) => ({ from: `${m}-01`, to: `${m}-${String(new Dat
  * quick view of exactly those. A booked line can still change (cost center, text) until its period is released.
  */
 export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: JournalPreset }) {
-  const [view, setView] = useState<View>(preset?.todo ? 'bearbeiten' : 'alle')
+  const { can } = useApp()
+  const reviewExpenses = can('billing.bank.manage')
+  // Opens on what is to do; with nothing to do it opens on everything.
+  const [view, setView] = useState<View>(() => (preset?.todo || ledger.lines.some((l) => isTodo(lineStatus(l, ledger))) || (reviewExpenses && ledger.expenses.some((x) => x.status === 'offen')) ? 'bearbeiten' : 'alle'))
   const [f, setF] = useState<Filters>({ ...NO_FILTERS, account: preset?.account ?? '', ...(preset?.month ? monthRange(preset.month) : {}) })
   const [creating, setCreating] = useState<null | 'receipt' | 'line' | 'transfer' | 'expense'>(null)
   const [bulk, setBulk] = useState(false)
   const { show, node } = useDetail(ledger)
-  const { can } = useApp()
-  const reviewExpenses = can('billing.bank.manage')
   const expensesOpen = reviewExpenses ? ledger.expenses.filter((x) => x.status === 'offen').length : 0
 
   const items = ledger.lines.map((l) => ({ l, status: lineStatus(l, ledger) }))
@@ -89,12 +90,12 @@ export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: J
         </div>
       </Card>
 
-      {node}
       {creating === 'receipt' && <ReceiptForm ledger={ledger} onClose={() => setCreating(null)} />}
       {creating === 'expense' && <ExpenseDrawer ledger={ledger} onClose={() => setCreating(null)} />}
       {creating === 'transfer' && <Transfer ledger={ledger} onClose={() => setCreating(null)} />}
       {creating === 'line' && <NewLine ledger={ledger} account={f.account} onClose={() => setCreating(null)} />}
-      {bulk && <BulkConfirm lines={safe} ledger={ledger} onClose={() => setBulk(false)} />}
+      {bulk && <BulkConfirm lines={safe} ledger={ledger} onEdit={(id) => show({ assign: id })} onClose={() => setBulk(false)} />}
+      {node}
     </div>
   )
 }
@@ -172,16 +173,24 @@ function NewLine({ ledger, account, onClose }: { ledger: Ledger; account: string
   )
 }
 
-/** The safe suggestions at a glance: nothing is booked before the list was seen. */
-function BulkConfirm({ lines, ledger, onClose }: { lines: BankLine[]; ledger: Ledger; onClose: () => void }) {
+/**
+ * The safe suggestions at a glance: nothing is booked before the list was seen. Untick what does not fit, or change a booking directly
+ * ("Ändern" opens it; once it is booked differently it leaves the list).
+ */
+function BulkConfirm({ lines, ledger, onEdit, onClose }: { lines: BankLine[]; ledger: Ledger; onEdit: (lineId: string) => void; onClose: () => void }) {
+  const [off, setOff] = useState<string[]>([])
+  const picked = lines.filter((l) => !off.includes(l.id))
+  const toggle = (id: string) => setOff(off.includes(id) ? off.filter((x) => x !== id) : [...off, id])
   return (
     <Drawer open title="Sichere Vorschläge prüfen" onClose={onClose}
-      footer={<Button variant="primary" size="lg" className="w-full" disabled={lines.length === 0} onClick={() => { ledger.assignMany(lines.map((l) => ({ lineId: l.id, target: l.suggestion!.target }))); onClose() }}>{lines.length} Buchungen bestätigen</Button>}>
+      footer={<Button variant="primary" size="lg" className="w-full" disabled={picked.length === 0} onClick={() => { ledger.assignMany(picked.map((l) => ({ lineId: l.id, target: l.suggestion!.target }))); onClose() }}>{picked.length} von {lines.length} bestätigen</Button>}>
       <div className="divide-y divide-line rounded-xl border border-line text-sm">
         {lines.map((l) => (
-          <div key={l.id} className="flex items-center gap-3 px-3 py-2">
-            <div className="min-w-0 flex-1"><div className="truncate font-medium">{l.text}</div><div className="truncate text-xs text-muted">{dmy(l.date)} · {ledger.label(l.suggestion!.target)}</div></div>
+          <div key={l.id} className={clsx('flex items-center gap-3 px-3 py-2', off.includes(l.id) && 'bg-slate-50 opacity-60')}>
+            <input type="checkbox" aria-label={`${l.text} bestätigen`} checked={!off.includes(l.id)} onChange={() => toggle(l.id)} />
+            <div className="min-w-0 flex-1"><div className="font-medium leading-snug">{l.text}</div><div className="text-xs text-muted">{dmy(l.date)} · {ledger.label(l.suggestion!.target)}</div></div>
             <div className={clsx('shrink-0 font-semibold tabular-nums', l.amount < 0 ? 'text-bad' : 'text-ok')}>{eur(l.amount)}</div>
+            <Button onClick={() => onEdit(l.id)}>Ändern</Button>
           </div>
         ))}
         {lines.length === 0 && <p className="p-4 text-muted">Keine sicheren Vorschläge mehr.</p>}
