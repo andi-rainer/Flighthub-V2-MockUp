@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../../state'
 import { useSession } from '../../session/session'
-import { Badge, Banner, Button, Card, Drawer } from '../../ui'
+import { Badge, Banner, Button, Drawer, Row, Section } from '../../ui'
 import LogoPicker from '../forms/LogoPicker'
 import { outdatedForms, updateForms } from '../forms/clubSync'
 import { type ClubData } from '../members/data'
 
-const inp = 'mt-1 h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm outline-none focus:border-brand'
+const inp = 'h-9 w-full rounded-lg border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand sm:w-80'
 
 /**
  * The data of the club in ONE place: name, address, contact, ZVR, IBAN, logo. Forms, PDFs and invoices take it from here.
@@ -33,29 +33,16 @@ export default function ClubPanel() {
     setForms(updateForms(forms, d, publish)); setAsking(false)
     setNote(publish ? `Gespeichert. ${n} Formular(e) haben eine neue Version, sie ist veröffentlicht.` : `Gespeichert. ${n} Formular(e) haben einen Entwurf mit den neuen Angaben, du prüfst und veröffentlichst ihn unter Formulare.`)
   }
-  const field = (k: keyof ClubData, label: string, wide = false) => <label className={`text-sm font-medium ${wide ? 'sm:col-span-2' : ''}`}>{label}<input value={String(d[k] ?? '')} onChange={(e) => set({ [k]: e.target.value } as Partial<ClubData>)} className={inp} /></label>
+  const field = (k: keyof ClubData, label: string) => <Row key={k} label={label}><input aria-label={label} value={String(d[k] ?? '')} onChange={(e) => set({ [k]: e.target.value } as Partial<ClubData>)} className={inp} /></Row>
 
   return (
-    <Card className="max-w-3xl space-y-6 p-5">
+    <div className="max-w-3xl space-y-4">
       {note && <Banner><span className="flex flex-wrap items-center justify-between gap-2"><span>{note}</span>{note.includes('Formular') && <Button onClick={() => nav('/formulare')}>Zu den Formularen</Button>}</span></Banner>}
-      <section className="space-y-3"><h3 className="text-sm font-semibold">Logo</h3><LogoPicker name={d.name} logo={d.logo} onChange={(logo) => set({ logo })} /></section>
-      <section>
-        <h3 className="mb-3 text-sm font-semibold">Verein</h3>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {field('name', 'Vereinsname', true)}
-          {field('street', 'Straße und Nummer')}
-          {field('city', 'PLZ und Ort')}
-        </div>
-      </section>
-      <section>
-        <h3 className="mb-3 text-sm font-semibold">Kontakt</h3>
-        <div className="grid gap-4 sm:grid-cols-3">{field('email', 'E-Mail')}{field('phone', 'Telefon')}{field('web', 'Website')}</div>
-      </section>
-      <section>
-        <h3 className="mb-3 text-sm font-semibold">Rechtliches und Bank</h3>
-        <div className="grid gap-4 sm:grid-cols-3">{field('zvr', 'ZVR-Zahl')}{field('iban', 'IBAN')}{field('court', 'Gerichtsstand (Ort)')}</div>
-      </section>
-      <div className="flex items-center gap-3 border-t border-line pt-4"><Button variant="primary" disabled={!changed} onClick={save}>Speichern</Button>{changed && <button onClick={() => { setD(club); setNote(null) }} className="text-sm text-muted hover:text-ink">Verwerfen</button>}</div>
+      <Section title="Logo"><div className="px-5 py-3"><LogoPicker name={d.name} logo={d.logo} onChange={(logo) => set({ logo })} /></div></Section>
+      <Section title="Verein">{field('name', 'Vereinsname')}{field('street', 'Straße und Nummer')}{field('city', 'PLZ und Ort')}</Section>
+      <Section title="Kontakt">{field('email', 'E-Mail')}{field('phone', 'Telefon')}{field('web', 'Website')}</Section>
+      <Section title="Rechtliches und Bank">{field('zvr', 'ZVR-Zahl')}{field('iban', 'IBAN')}{field('court', 'Gerichtsstand (Ort)')}</Section>
+      <div className="flex items-center gap-3"><Button variant="primary" disabled={!changed} onClick={save}>Speichern</Button>{changed && <button onClick={() => { setD(club); setNote(null) }} className="text-sm text-muted hover:text-ink">Verwerfen</button>}</div>
 
       <Drawer open={asking} title="Formulare aktualisieren" onClose={() => { setAsking(false); setNote('Vereinsdaten gespeichert. Die Formulare zeigen noch die alten Angaben.') }}
         footer={<div className="space-y-2"><Button variant="primary" size="lg" className="w-full" onClick={() => update(false)}>Neue Versionen als Entwurf anlegen</Button><Button size="lg" className="w-full" onClick={() => update(true)}>Neue Versionen gleich veröffentlichen</Button><button onClick={() => { setAsking(false); setNote('Vereinsdaten gespeichert. Die Formulare zeigen noch die alten Angaben.') }} className="block w-full py-2 text-center text-sm text-muted hover:text-ink">Formulare nicht ändern</button></div>}>
@@ -69,6 +56,6 @@ export default function ClubPanel() {
           ))}
         </div>
       </Drawer>
-    </Card>
+    </div>
   )
 }

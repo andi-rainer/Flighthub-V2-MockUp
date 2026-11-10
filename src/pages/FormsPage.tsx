@@ -36,7 +36,7 @@ export default function FormsPage() {
 
   return (
     <>
-      <PageHeader title="Formulare" actions={<div className="flex gap-2">{can('settings.edit.system') && <Link to="/einstellungen?tab=verein"><Button><Building2 size={16} /> Vereinsdaten</Button></Link>}<Button variant="primary" onClick={() => setCreating(true)}><Plus size={16} /> Neues Formular</Button></div>} />
+      <PageHeader title="Formulare" actions={<div className="flex gap-2">{can('settings.edit.system') && <Link to="/verein"><Button><Building2 size={16} /> Vereinsdaten</Button></Link>}<Button variant="primary" onClick={() => setCreating(true)}><Plus size={16} /> Neues Formular</Button></div>} />
       <Card className="mb-5 flex flex-wrap gap-x-6 gap-y-3 p-4">
         {groups.map((g) => {
           const list = forms.filter((f) => g.kinds.includes(f.kind))

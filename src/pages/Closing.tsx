@@ -19,10 +19,12 @@ import { Badge, Button, Card, PageHeader, Segmented, Stat } from '../ui'
 type Kind = 'Belastung' | 'Einzahlung' | 'Voucher'
 interface Posting { kind: Kind; text: string; amount: number }
 
+/** What a line of a sport jumper covers when it is more than one plain jump: several jumps, paid empty seats. */
+const detail = (j: Jumper) => [(j.jumps ?? 1) > 1 ? `${j.jumps} Sprünge` : '', (j.paidSeats ?? 0) > 0 ? `${j.paidSeats === 1 ? 'ein Platz' : `${j.paidSeats} Plätze`} bezahlt, nicht gesprungen` : ''].filter(Boolean).join(', ')
 const balanceOf = (name: string) => members.find((m) => m.name === name)?.balance
 const kindTone = { Belastung: 'bad', Einzahlung: 'ok', Voucher: 'info' } as const
 
-export default function Closing({ jumped, notFlown, onBack, onDiscard }: { jumped: Jumper[]; notFlown: Jumper[]; onBack: () => void; onDiscard: (id: string) => void }) {
+export default function Closing({ jumped, notFlown, onBack, onDiscard, onBooked }: { jumped: Jumper[]; notFlown: Jumper[]; onBack: () => void; onDiscard: (id: string) => void; onBooked: () => void }) {
   const [pay, setPay] = useState<Record<string, Pay>>({})
   const [cash, setCash] = useState<Record<string, number>>({})
   const [booked, setBooked] = useState(false)
@@ -33,7 +35,7 @@ export default function Closing({ jumped, notFlown, onBack, onDiscard }: { jumpe
 
   const postings: Posting[] = jumped.flatMap((j): Posting[] => {
     if (prepaid(j)) return [{ kind: 'Voucher', text: `${j.name}: Voucher eingelöst, Ertrag ${sparte(j)}`, amount: j.price }]
-    const out: Posting[] = [{ kind: 'Belastung', text: `Betriebskonto ${j.name} belastet, Ertrag ${sparte(j)}`, amount: -j.price }]
+    const out: Posting[] = [{ kind: 'Belastung', text: `Betriebskonto ${j.name} belastet${detail(j) ? ` (${detail(j)})` : ''}, Ertrag ${sparte(j)}`, amount: -j.price }]
     if (payOf(j) === 'bar' && cashOf(j) > 0) {
       const extra = cashOf(j) - j.price
       out.push({ kind: 'Einzahlung', text: `${j.name} zahlt bar: Kassa und Betriebskonto${extra > 0 ? ` (davon ${eur(extra)} Vorauszahlung)` : ''}`, amount: cashOf(j) })
@@ -45,10 +47,10 @@ export default function Closing({ jumped, notFlown, onBack, onDiscard }: { jumpe
   if (booked) {
     return (
       <>
-        <PageHeader title="Sprungtag abgeschlossen" />
+        <PageHeader title="Tag abgeschlossen" />
         <div className="max-w-2xl space-y-4">
           <PostingList postings={postings} />
-          <Button onClick={onBack}>Zurück zum Sprungtag</Button>
+          <Button onClick={onBack}>Zurück zum Manifest</Button>
         </div>
       </>
     )
@@ -76,7 +78,7 @@ export default function Closing({ jumped, notFlown, onBack, onDiscard }: { jumpe
           )}
 
           <Card className="p-4">
-            <h2 className="mb-1 font-semibold">{step(2)} · Geflogen ({jumped.length}): hat jemand bar eingezahlt?</h2>
+            <h2 className="mb-1 font-semibold">{step(2)} · Geflogen ({jumped.filter((j) => !j.noShow).length}){jumped.some((j) => j.noShow) ? ` und bezahlte Plätze (${jumped.filter((j) => j.noShow).length})` : ''}: hat jemand bar eingezahlt?</h2>
             <p className="mb-2 text-sm text-muted">Das Betriebskonto wird in jedem Fall belastet. Wer später überweist oder Guthaben hat, bleibt bei „Nur belasten“.</p>
             <div className="divide-y divide-line">
               {jumped.map((j) => {
@@ -85,7 +87,7 @@ export default function Closing({ jumped, notFlown, onBack, onDiscard }: { jumpe
                 return (
                   <div key={j.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
                     <div>
-                      <div className="font-medium">{j.name} <span className="font-normal text-muted">· {eur(j.price)}</span></div>
+                      <div className="font-medium">{j.name} <span className="font-normal text-muted">· {eur(j.price)}</span> {detail(j) && <span className="font-normal text-muted">· {detail(j)}</span>} {j.noShow && <Badge tone="warn">nicht gesprungen</Badge>}</div>
                       {!prepaid(j) && final !== undefined && <div className="text-xs text-muted">Konto: {eur(bal!)} → {eur(final)}</div>}
                     </div>
                     {prepaid(j) ? (
@@ -120,7 +122,7 @@ export default function Closing({ jumped, notFlown, onBack, onDiscard }: { jumpe
         <aside className="space-y-3">
           <Stat label="Betriebskonten belastet" value={eur(total('Belastung'))} />
           <Stat label="Bar in Kassa" value={eur(total('Einzahlung'))} hint="sofort gebucht" />
-          <Button variant="primary" size="lg" className="w-full" disabled={notFlown.length > 0} onClick={() => setBooked(true)}>
+          <Button variant="primary" size="lg" className="w-full" disabled={notFlown.length > 0} onClick={() => { setBooked(true); onBooked() }}>
             Diese {postings.length} Buchungen durchführen
           </Button>
           {notFlown.length > 0 && <p className="text-xs text-muted">Erst alle Nicht-Geflogenen klären.</p>}

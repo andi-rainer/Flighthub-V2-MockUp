@@ -1,21 +1,25 @@
+import { FuelMissingNotice } from './fuel/FuelAdjust'
+import { ExpenseSubmitCard } from './finance/ExpenseSubmit'
 import clsx from 'clsx'
+import MemberDocuments from './members/MemberDocuments'
 import { AlertTriangle, ArrowRight, CheckCircle2, Plane } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { aircraft, eur, members } from '../data'
-import { useApp } from '../state'
+import { flightNo, TODAY_ISO, useApp } from '../state'
 import { useNavigate } from 'react-router-dom'
 import { fmtAbs } from '../dates'
 import { flightKey, flightPath, type FlightSource } from './FlightPage'
 import { Badge, Button, Card, PageHeader, Stat } from '../ui'
-import { daysLeft, details } from './aircraft/data'
+import { dueList } from './aircraft/data'
 import { computeSparten } from './finance/results'
 import { initialFees } from './members/data'
+import { MANIFEST_TODAY, TODAY_DAY } from './manifest/data'
 
 export default function Dashboard() {
-  const { can } = useApp()
+  const { can, modules } = useApp()
   // The dashboard follows what a person may do, not a fixed role.
   if (can('billing.view.all')) return <Treasurer />
-  if (can('manifest.operation_days.edit')) return <ManifestDay />
+  if (can('manifest.operation_days.edit') && modules.skydive) return <ManifestDay />
   if (can('afp.create')) return <PilotHome />
   return <MemberHome />
 }
@@ -32,19 +36,19 @@ function Task({ to, n, label, hint }: { to: string; n: number; label: string; hi
 }
 
 function Treasurer() {
-  const { ledger, flights, apps, hasAccount, persona, waived, can } = useApp()
-  const withoutAfp = Object.keys(waived).length // only skydive flights can start without an AFP
+  const { ledger, flights, apps, hasAccount, persona, can, aircraftData, docsOf } = useApp()
   const { rows, income, cost } = computeSparten()
   const withAccount = members.filter((m) => hasAccount(m.id))
   const toCharge = flights.filter((f) => f.state === 'offen').length
   const openLines = ledger.lines.filter((l) => !ledger.done[l.id]).length
+  const openExpenses = ledger.expenses.filter((x) => x.status === 'offen').length
   const noReceipt = ledger.lines.filter((l) => l.needsReceipt && !ledger.receipts.some((r) => r.lineId === l.id)).length
   const decide = apps.filter((a) => a.status === 'Unterzeichnet').length
   const feesDue = initialFees.filter((f) => f.state === 'faellig').length
   const owed = withAccount.reduce((n, m) => n + Math.min(0, ledger.balances[m.id] ?? 0), 0)
   const credit = withAccount.reduce((n, m) => n + Math.max(0, ledger.balances[m.id] ?? 0), 0)
-  const dues = aircraft.flatMap((a) => details[a.id].dues.map((d) => ({ ...d, reg: a.reg }))).sort((a, b) => daysLeft(a) - daysLeft(b)).slice(0, 4)
-  const expiring = members.reduce((n, m) => n + m.docs.filter((d) => d.state !== 'ok').length, 0)
+  const dues = aircraft.flatMap((a) => dueList(aircraftData[a.id], TODAY_ISO).map((d) => ({ ...d, reg: a.reg }))).sort((a, b) => a.days - b.days).slice(0, 4)
+  const expiring = members.reduce((n, m) => n + docsOf(m.id).filter((d) => d.state !== 'ok').length, 0)
   const max = Math.max(...rows.map((r) => Math.abs(r.result)))
 
   return (
@@ -52,12 +56,12 @@ function Treasurer() {
       <PageHeader title={`Guten Morgen, ${members.find((m) => m.id === persona.memberId)!.name.split(' ')[0]}`} />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Task to="/finanzen?tab=verrechnen" n={toCharge} label="Flüge verrechnen" hint="aus dem Bordbuch, wartet auf deine Bestätigung" />
+        <Task to="/finanzen?tab=auslagen" n={openExpenses} label="Auslagen prüfen" hint="Bar-Auslagen von Mitgliedern warten auf deine Prüfung" />
         <Task to="/finanzen?tab=bank" n={openLines} label="Bankzeilen zuordnen" hint="Vorschläge der KI warten auf dich" />
         <Task to="/finanzen?tab=bank" n={noReceipt} label="Belege fehlen" hint="Buchungen ohne Rechnung oder Lieferschein" />
         <Task to="/mitglieder?tab=antraege" n={decide} label="Anträge entscheiden" hint="unterschrieben, warten auf Genehmigung" />
         <Task to="/mitglieder?tab=beitraege" n={feesDue} label="Beitragslauf" hint="Rechnungen sind bereit zur Freigabe" />
         <Task to="/finanzen?tab=konten" n={1} label="Kontoauszüge Oktober" hint="zur Freigabe vor dem Versand" />
-        {can('flight.log.review') && <Task to="/sprungtag" n={withoutAfp} label="Sprungflüge ohne AFP prüfen" hint="Boarding ohne AFP, mit Grund" />}
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -85,7 +89,7 @@ function Treasurer() {
         <Card className="p-5">
           <div className="mb-3 font-semibold">Als Nächstes fällig</div>
           <div className="divide-y divide-line">
-            {dues.map((d) => <div key={d.reg + d.id} className="flex items-center justify-between gap-3 py-2.5 text-sm"><span><b>{d.reg}</b> {d.name}</span><span className={clsx(daysLeft(d) < 30 ? 'font-medium text-bad' : 'text-muted')}>{d.label}</span></div>)}
+            {dues.map((d) => <div key={d.reg + d.id} className="flex items-center justify-between gap-3 py-2.5 text-sm"><span><b>{d.reg}</b> {d.name}</span><span className={clsx(d.days < 30 ? 'font-medium text-bad' : 'text-muted')}>{d.label}</span></div>)}
           </div>
         </Card>
         <Card className="p-5">
@@ -129,16 +133,16 @@ function Cashflow() {
 }
 
 function ManifestDay() {
-  const { checkedIn, weights } = useApp()
+  const { checkedIn, weights, docsOf } = useApp()
   const here = members.filter((m) => checkedIn.includes(m.id))
   const warnings = here.flatMap((m) => [
-    ...m.docs.filter((d) => d.state === 'abgelaufen').map((d) => `${m.name}: ${d.label} abgelaufen`),
+    ...docsOf(m.id).filter((d) => d.state === 'abgelaufen').map((d) => `${m.name}: ${d.label} abgelaufen`),
     ...(weights[m.id] ? [] : [`${m.name}: Gewicht fehlt`]),
   ])
   const ac = aircraft[0]
   return (
     <>
-      <PageHeader title="Heute, Samstag 07.11." subtitle="Sprungtag aktiv" actions={<Link to="/sprungtag"><Button variant="primary" size="lg">Zum Sprungtag</Button></Link>} />
+      <PageHeader title="Heute, Samstag 07.11." subtitle="Sprungtag aktiv" actions={<Link to={MANIFEST_TODAY}><Button variant="primary" size="lg">Zum Manifest</Button></Link>} />
       <div className="grid gap-3 sm:grid-cols-3">
         <Stat label="Am Platz eingecheckt" value={String(here.length)} hint="Sportspringer" />
         <Stat label="Tandem heute" value="2" hint="1 Voucher, 1 online bezahlt" />
@@ -153,7 +157,7 @@ function ManifestDay() {
           <div className="mb-3 flex items-center gap-2 font-semibold"><Plane size={16} /> {ac.reg}</div>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-muted">Nächster Check</span><span>100-h-Check in 17,6 h</span></div>
-            <div className="flex justify-between"><span className="text-muted">Masse und Schwerpunkt</span><Link to="/flugzeuge/a1" className="text-brand">Envelope ansehen</Link></div>
+            <div className="flex justify-between"><span className="text-muted">Masse und Schwerpunkt</span><Link to="/flugzeuge/a1/rechner" className="text-brand">Envelope ansehen</Link></div>
           </div>
         </Card>
       </div>
@@ -162,16 +166,18 @@ function ManifestDay() {
 }
 
 function MemberHome() {
-  const { persona, ledger, checkedIn, toggleCheckIn, weights, setWeight } = useApp()
+  const { persona, ledger, checkedIn, toggleCheckIn, weights, setWeight, modules } = useApp()
   const m = members.find((x) => x.id === persona.memberId)!
   const here = checkedIn.includes(m.id)
   const balance = ledger.balances[m.id] ?? 0
   const kg = weights[m.id]
   return (
     <>
-      <PageHeader title={`Hallo ${m.name.split(' ')[0]}`} subtitle="Heute am Platz?" />
+      <PageHeader title={`Hallo ${m.name.split(' ')[0]}`} subtitle={modules.skydive ? 'Heute am Platz?' : undefined} />
+      <FuelMissingNotice className="mb-5" />
       <div className="grid gap-5 lg:grid-cols-2">
-        <Card className="p-5">
+        <div className="lg:col-span-2"><ExpenseSubmitCard /></div>
+        {modules.skydive && <Card className="p-5">
           <div className="text-sm font-semibold">Check-in</div>
           <p className="mt-1 text-sm text-muted">{here ? 'Du bist eingecheckt. Das Manifest sieht dich und kann dich auf einen Flug setzen.' : 'Check dich ein, damit dich das Manifest auf einen Flug setzen kann.'}</p>
           <Button variant={here ? 'secondary' : 'primary'} size="lg" className="mt-4 w-full" onClick={() => toggleCheckIn(m.id)} disabled={!kg}>{here ? 'Ich bin wieder weg' : 'Ich bin am Platz'}</Button>
@@ -179,7 +185,7 @@ function MemberHome() {
             <input inputMode="numeric" value={kg ?? ''} onChange={(e) => setWeight(m.id, Number(e.target.value) || 0)} className="mt-1 h-11 w-32 rounded-lg border border-line px-3 outline-none focus:border-brand" />
           </label>
           <p className="mt-1 text-xs text-muted">Pflicht, damit der Schwerpunkt im Flugzeug stimmt. Bitte aktuell halten. Ohne Gewicht ist kein Check-in möglich.</p>
-        </Card>
+        </Card>}
         <Card className="p-5">
           <div className="text-sm font-semibold">Mein Betriebskonto</div>
           <div className={clsx('mt-1 text-3xl font-semibold tabular-nums', balance < 0 && 'text-bad')}>{eur(balance)}</div>
@@ -187,13 +193,12 @@ function MemberHome() {
           <Link to="/mein-konto" className="mt-3 inline-block text-sm text-brand">Buchungen und Einzahlen</Link>
         </Card>
         <Card className="p-5">
-          <div className="mb-2 text-sm font-semibold">Meine Dokumente</div>
-          <div className="divide-y divide-line">{m.docs.map((d) => <div key={d.label} className="flex items-center justify-between py-2 text-sm"><span>{d.label}</span><span className="flex items-center gap-2 text-muted">{d.expires}<Badge tone={d.state === 'ok' ? 'ok' : d.state === 'bald' ? 'warn' : 'bad'}>{d.state === 'ok' ? 'gültig' : d.state === 'bald' ? 'läuft bald ab' : 'abgelaufen'}</Badge></span></div>)}</div>
+          <MemberDocuments memberId={m.id} title="Meine Dokumente" />
         </Card>
-        <Card className="p-5">
+        {modules.skydive && <Card className="p-5">
           <div className="mb-2 text-sm font-semibold">Meine letzten Sprünge</div>
           <div className="divide-y divide-line text-sm">{[['31.10.', '4 Sprünge'], ['24.10.', '3 Sprünge'], ['17.10.', '5 Sprünge']].map(([d, t]) => <div key={d} className="flex justify-between py-2"><span className="text-muted">{d}</span>{t}</div>)}</div>
-        </Card>
+        </Card>}
       </div>
     </>
   )
@@ -201,16 +206,19 @@ function MemberHome() {
 
 /** The pilot sees the whole flying day: his flights and AFPs, the aircraft, who is at the field, his account and documents. */
 function PilotHome() {
-  const { loads, afps, persona, checkedIn, ledger, entries, can, reservations } = useApp()
+  const { loads, afps, persona, checkedIn, ledger, entries, can, reservations, afpConfig, modules } = useApp()
   const m = members.find((x) => x.id === persona.memberId)!
   const nav = useNavigate()
-  const open = loads.filter((l) => l.status !== 'gelandet' && l.jumpers.length > 0)
-  const myRes = reservations.filter((r) => r.memberId === m.id && !r.standby)
+  // The flights of today with this pilot entered in the manifest, in time order; the first one is the next flight.
+  const open = !modules.skydive ? [] : loads.filter((l) => l.dayId === TODAY_DAY && l.pilotId === m.id && l.status !== 'gelandet').sort((a, b) => a.time.localeCompare(b.time))
+  const next = open[0]
+  const myRes = !modules.charter ? [] : reservations.filter((r) => r.memberId === m.id && !r.standby)
   const balance = ledger.balances[m.id] ?? 0
   const mine = entries.filter((e) => e.pilot === m.name).slice(0, 3)
   const ac = aircraft[0]
   const row = (src: FlightSource, title: string, sub: string) => {
     const a = afps[flightKey(src)]
+    if (!afpConfig.enabled) return <div key={flightKey(src)} className="rounded-xl bg-slate-50 p-3"><div className="font-medium">{title}</div><div className="text-sm text-muted">{sub}</div></div>
     return (
       <div key={flightKey(src)} className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3">
         <div className="min-w-0 flex-1 basis-56"><div className="font-medium">{title}</div><div className="text-sm text-muted">{sub}</div></div>
@@ -221,28 +229,39 @@ function PilotHome() {
   }
   return (
     <>
-      <PageHeader title={`Hallo ${m.name.split(' ')[0]}`} actions={<Link to="/reservierungen"><Button>Flugzeug reservieren</Button></Link>} />
+      <PageHeader title={`Hallo ${m.name.split(' ')[0]}`} actions={modules.charter ? <Link to="/reservierungen"><Button>Flugzeug reservieren</Button></Link> : undefined} />
+      {next && (
+        <Card className="mb-5 flex flex-wrap items-center gap-4 border-brand/40 bg-brand-soft/50 p-5">
+          <div className="min-w-0 flex-1 basis-56">
+            <div className="text-sm font-medium text-brand">Dein nächster Flug</div>
+            <div className="text-xl font-semibold">Sprungflug {flightNo(loads, next)} · {next.time}</div>
+            <div className="text-sm text-muted">{next.jumpers.length === 0 ? 'Noch niemand eingeteilt' : `${next.jumpers.length} im Manifest`} · OE-DZA{afpConfig.enabled && afps[flightKey({ kind: 'load', loadId: next.id })] ? ' · AFP läuft' : ''}</div>
+          </div>
+          {afpConfig.enabled && <Button variant="primary" size="lg" onClick={() => nav(flightPath({ kind: 'load', loadId: next.id }))}>{afps[flightKey({ kind: 'load', loadId: next.id })] ? 'AFP ansehen' : 'AFP starten'}</Button>}
+        </Card>
+      )}
       <div className="grid gap-5 lg:grid-cols-2">
+        <div className="lg:col-span-2"><ExpenseSubmitCard /></div>
         <Card className="space-y-3 p-5 lg:col-span-2">
           <div className="font-semibold">Deine Flüge heute</div>
           {myRes.filter((r) => r.from < 24).map((r) => row({ kind: 'res', resId: r.id }, `Freier Flug · ${r.aircraft} · ${fmtAbs(r.from)} bis ${fmtAbs(r.to)}`, 'aus deiner Reservierung'))}
-          {open.map((l) => row({ kind: 'load', loadId: l.id }, `Sprungflug ${l.id} · ${l.time}`, `${l.jumpers.length} im Manifest · OE-DZA`))}
-          {open.length === 0 && myRes.filter((r) => r.from < 24).length === 0 && <p className="text-sm text-muted">Heute keine Flüge. Reserviere ein Flugzeug, dann erscheint es hier.</p>}
+          {open.slice(1).map((l) => row({ kind: 'load', loadId: l.id }, `Sprungflug ${flightNo(loads, l)} · ${l.time}`, `${l.jumpers.length} im Manifest · OE-DZA`))}
+          {open.length <= 1 && myRes.filter((r) => r.from < 24).length === 0 && <p className="text-sm text-muted">{next ? 'Sonst keine weiteren Flüge heute.' : 'Du bist heute auf keinem Sprungflug eingetragen. Reserviere ein Flugzeug für einen freien Flug.'}</p>}
         </Card>
         <Card className="p-5">
           <div className="mb-2 flex items-center gap-2 font-semibold"><Plane size={16} /> {ac.reg}</div>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-muted">Status</span><Badge tone="ok">einsatzbereit</Badge></div>
             <div className="flex justify-between"><span className="text-muted">Nächster Check</span><span>100-h-Check in 17,6 h</span></div>
-            <div className="flex justify-between"><span className="text-muted">Masse und Schwerpunkt</span><Link to="/flugzeuge/a1" className="text-brand">Envelope ansehen</Link></div>
+            <div className="flex justify-between"><span className="text-muted">Masse und Schwerpunkt</span><Link to="/flugzeuge/a1/rechner" className="text-brand">Envelope ansehen</Link></div>
           </div>
         </Card>
-        <Card className="p-5">
+        {modules.skydive && <Card className="p-5">
           <div className="mb-2 font-semibold">Am Platz</div>
           <div className="text-sm"><b className="text-2xl tabular-nums">{checkedIn.length}</b> Springer eingecheckt</div>
-          <p className="mt-1 text-sm text-muted">{can('manifest.jumpers.assign') ? '' : 'Du siehst den Sprungtag lesend. Einsetzen macht das Manifest.'}</p>
-          <Link to="/sprungtag" className="mt-2 inline-block text-sm text-brand">Sprungtag ansehen</Link>
-        </Card>
+          <p className="mt-1 text-sm text-muted">{can('manifest.jumpers.assign') ? '' : 'Du siehst das Manifest lesend. Einsetzen macht der Koordinator.'}</p>
+          <Link to={MANIFEST_TODAY} className="mt-2 inline-block text-sm text-brand">Manifest ansehen</Link>
+        </Card>}
         <Card className="p-5">
           <div className="mb-2 flex items-center justify-between font-semibold">Meine letzten Flüge<Link to="/bordbuch" className="text-sm font-normal text-brand">Bordbuch</Link></div>
           <div className="divide-y divide-line text-sm">
@@ -256,8 +275,7 @@ function PilotHome() {
           <Link to="/mein-konto" className="mt-2 inline-block text-sm text-brand">Buchungen ansehen</Link>
         </Card>
         <Card className="p-5 lg:col-span-2">
-          <div className="mb-2 font-semibold">Meine Dokumente</div>
-          <div className="divide-y divide-line">{m.docs.map((x) => <div key={x.label} className="flex items-center justify-between py-2 text-sm"><span>{x.label}</span><span className="flex items-center gap-2 text-muted">{x.expires}<Badge tone={x.state === 'ok' ? 'ok' : x.state === 'bald' ? 'warn' : 'bad'}>{x.state === 'ok' ? 'gültig' : x.state === 'bald' ? 'läuft bald ab' : 'abgelaufen'}</Badge></span></div>)}{m.docs.length === 0 && <p className="py-2 text-sm text-muted">Keine erfasst.</p>}</div>
+          <MemberDocuments memberId={m.id} title="Meine Dokumente" />
         </Card>
       </div>
     </>

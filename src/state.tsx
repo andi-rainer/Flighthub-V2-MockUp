@@ -1,7 +1,15 @@
+import { DEFAULT_CATALOG, seedTickets, seedVouchers, type CatalogItem, type Ticket, type Voucher } from './pages/tickets/data'
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
-import { members, registerMember, type Jumper, type Member } from './data'
+import { initialCostCenters, members, registerMember, type Jumper, type Member } from './data'
 import { F, FUNCTIONS, permissionsFor, seedGrants, type Assignment, type FunctionDef, type Grants, type Permission } from './permissions'
-import { useLedger, type Ledger } from './pages/finance/ledger'
+import { useLedger, type Ledger, type PaymentEvent } from './pages/finance/ledger'
+import { payTicket, payVoucher } from './pages/tickets/payments'
+import { docStateOf, seedMemberDocs, type MemberDoc, type MemberDocView } from './pages/members/memberDocs'
+import { DEFAULT_MODULES, type ModulesConfig } from './modules'
+import { DEFAULT_KINDS, rateFor, splitFor as splitOf, type OperationKind } from './kinds'
+import { DEFAULT_AFP_CONFIG, type AfpConfig } from './pages/afp/config'
+import { details as seedDetails, seedPaxLimits, type Detail, type PaxLimits } from './pages/aircraft/data'
+import { DEFAULT_SETTINGS, seedBookings, seedDays, tandemJumper, type ManifestDay, type ManifestSettings, type TandemBooking } from './pages/manifest/data'
 import { defaultClub, defaultLayout, designFrom, initialApplications, initialFees, initialForms, initialPatterns, membershipTypes, type Application, type Branding, type ClubData, type Fee, type Layout, type FeePattern, type FormTemplate, type MembershipType } from './pages/members/data'
 
 // ---------- Who is signed in: functions give permissions (logic adopted from V1) ----------
@@ -13,7 +21,7 @@ export const initialAssignments: Record<string, Assignment[]> = {
   m1: [{ fn: F.SPORT_JUMPER }],
   m2: [{ fn: F.SPORT_JUMPER }, { fn: F.SKYDIVE_PILOT }, { fn: F.PILOT }],
   m3: [{ fn: F.TANDEM_MASTER, until: '2027-06-30' }],
-  m4: [{ fn: F.SPORT_JUMPER }],
+  m4: [{ fn: F.SPORT_JUMPER }, { fn: F.TANDEM_MASTER }],
   m5: [{ fn: F.PILOT }, { fn: F.FLIGHT_INSTRUCTOR }, { fn: F.TREASURER }],
   m6: [], m7: [{ fn: F.SPORT_JUMPER }], m8: [{ fn: F.MANIFEST_COORDINATOR }], m9: [],
 }
@@ -22,14 +30,19 @@ export const viewAs = ['m5', 'm8', 'm2', 'm3', 'm1']
 
 // ---------- Loads (shared by Manifest, AFP and Dashboard) ----------
 export type LoadStatus = 'geplant' | 'boarding' | 'in_air' | 'gelandet'
-export interface Load { id: number; time: string; status: LoadStatus; jumpers: Jumper[] }
-export const sportJumper = (m: Member, kg?: number): Jumper => ({ id: `s-${m.id}`, memberId: m.id, name: m.name, kind: 'sport', price: 28, weight: kg })
+export interface Load { id: number; dayId: string; time: string; status: LoadStatus; jumpers: Jumper[]; /** Member id of the pilot of this flight. */ pilotId?: string }
+/** Number of a flight within its day (1, 2, 3 ...), ordered by time. The id is unique over all days and only used internally. */
+export const flightNo = (loads: Load[], l: Load) => loads.filter((x) => x.dayId === l.dayId).sort((a, b) => a.time.localeCompare(b.time) || a.id - b.id).findIndex((x) => x.id === l.id) + 1
+/** The price comes from the manifest settings (per club); the default is only for seed data. */
+export const sportJumper = (m: Member, kg?: number, price = DEFAULT_SETTINGS.sportPrice): Jumper => ({ id: `s-${m.id}`, memberId: m.id, name: m.name, kind: 'sport', price, weight: kg })
 
 /** Result of the pilot's AFP (Abbreviated Flight Plan), made at the aircraft. The manifest only sees this result. */
-export interface AfpData { pilotId: string; pilotKg: number; pax: { id: number; name: string; kg: number }[]; bag: number; fuelL: number; planned: number; kind: string }
+export interface AfpData { /** Reserve in minutes at the time of the release. */ reserveMin?: number; /** Flight time to the alternate in minutes at the time of the release. */ alternateMin?: number; pilotId: string; pilotKg: number; pax: { id: number; name: string; kg: number }[]; bag: number; fuelL: number; planned: number; kind: string; /** Fuel filled before the flight and what was done to the tank: they go into the Bordbuch entry when the flight is done. */ fuelSupply?: Supply; fuelAdjust?: FuelAdjust }
 /** The four times of a flight, logged one after another (HH:MM). Block time and flight time are derived, never typed. */
 export interface FlightTimes { off?: string; to?: string; ld?: string; on?: string }
-export interface AfpResult { key: string; pilot: string; fuelL: number; tow: number; arm: number; enduranceMin: number; status: 'Freigegeben' | 'Gelandet'; releasedAt: string; data?: AfpData; times?: FlightTimes }
+/** The pilot's release: signature (image), time, the PDF that went to the pilot by mail. The pre-flight check was confirmed with it. */
+export interface AfpRelease { signature: string; signedAt: string; pdf: string; mailedTo: string }
+export interface AfpResult { key: string; pilot: string; fuelL: number; tow: number; arm: number; enduranceMin: number; status: 'Freigegeben' | 'Gelandet'; releasedAt: string; data?: AfpData; times?: FlightTimes; release?: AfpRelease }
 
 // ---------- Reservations (a reserved aircraft is a flight to prepare) ----------
 /** `from` and `to` are absolute hours since 00:00 of day 0 (07.11.2026), so a reservation can span several days. */
@@ -37,6 +50,8 @@ export interface Reservation { id: number; aircraft: string; from: number; to: n
 const seedReservations: Reservation[] = [
   { id: 1, aircraft: 'OE-DZA', from: 9, to: 17, who: 'Sprungbetrieb', label: 'Sprungtag', priority: true },
   { id: 5, aircraft: 'OE-DZA', from: 33, to: 41, who: 'Sprungbetrieb', label: 'Sprungtag', priority: true },
+  { id: 9, aircraft: 'OE-DZA', from: 177, to: 185, who: 'Sprungbetrieb', label: 'Sprungtag', priority: true },
+  { id: 10, aircraft: 'OE-DZA', from: 369, to: 376, who: 'Sprungbetrieb', label: 'Sprungtag', priority: true },
   { id: 2, aircraft: 'OE-KFR', from: 10, to: 12, who: 'Bernd Huber', memberId: 'm2', label: 'Bernd Huber' },
   { id: 3, aircraft: 'OE-KFR', from: 14, to: 16.5, who: 'Eva Steiner', memberId: 'm5', label: 'Eva Steiner' },
   { id: 4, aircraft: 'OE-DZA', from: 17.5, to: 19, who: 'Bernd Huber', memberId: 'm2', label: 'Bernd Huber' },
@@ -69,14 +84,16 @@ const seedHistory: HistoryEvent[] = [
 const FIELD_LABEL: Record<string, string> = { first: 'Vorname', last: 'Nachname', email: 'E-Mail', phone: 'Telefon', birth: 'Geburtsdatum', street: 'Straße', no: 'Hausnummer', zip: 'PLZ', city: 'Stadt', country: 'Land', emName: 'Notfallkontakt Name', emPhone: 'Notfallkontakt Telefon', lang: 'Sprache' }
 
 // ---------- Bordbuch ----------
-/** A missing receipt is allowed, but only with a reason. */
-export type Rcpt = { state: 'ja' } | { state: 'fehlt' } | { state: 'grund'; reason: string }
-export interface Supply { amount: number; receipt: Rcpt }
+/** A missing receipt is allowed, but only with a reason. Oil needs none (`entfaellt`): it is only tracked. */
+export type Rcpt = { state: 'ja' } | { state: 'fehlt' } | { state: 'grund'; reason: string } | { state: 'entfaellt' }
+export interface Supply { amount: number; receipt: Rcpt; /** The invoice kept in Finanzen (with its sum and price per liter). */ receiptId?: string; /** Fuel: filled before or after the flight. */ when?: 'vor' | 'nach' }
+/** The tank changed in an exception of an entry: fuel taken out (de-fueling) or the content set by hand (`korrektur`, `liters` is the new content, with the reason). */
+export interface FuelAdjust { kind: 'defuel' | 'korrektur'; liters: number; reason?: string }
 /** `afp`: 'ja' = made through an AFP, 'alt' = before the AFP existed, anything else = the reason it was done without. */
-export interface LogEntry { id: number; aircraft: string; times?: FlightTimes; blockMin?: number; afp?: string; date: string; pilot: string; kind: string; from: string; to: string; minutes: number; landings: number; fuel?: Supply; oil?: Supply }
+export interface LogEntry { id: number; aircraft: string; times?: FlightTimes; blockMin?: number; afp?: string; date: string; pilot: string; kind: string; from: string; to: string; minutes: number; landings: number; fuel?: Supply; fuelAdjust?: FuelAdjust; oil?: Supply }
 
 const seedEntries: LogEntry[] = [
-  { id: 3, aircraft: 'OE-DZA', afp: 'alt', date: '31.10.2026', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', from: 'LOLW', to: 'LOLW', minutes: 372, landings: 14, fuel: { amount: 85, receipt: { state: 'ja' } }, oil: { amount: 0.5, receipt: { state: 'grund', reason: 'Vereinstankstelle, kein Beleg' } } },
+  { id: 3, aircraft: 'OE-DZA', afp: 'alt', date: '31.10.2026', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', from: 'LOLW', to: 'LOLW', minutes: 372, landings: 14, fuel: { amount: 85, receipt: { state: 'ja' } }, oil: { amount: 0.5, receipt: { state: 'entfaellt' } } },
   { id: 2, aircraft: 'OE-DZA', afp: 'alt', date: '24.10.2026', pilot: 'Eva Steiner', kind: 'Schulung', from: 'LOLW', to: 'LOLW', minutes: 65, landings: 6 },
   { id: 1, aircraft: 'OE-DZA', afp: 'alt', date: '17.10.2026', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', from: 'LOLW', to: 'LOLW', minutes: 301, landings: 11, fuel: { amount: 62, receipt: { state: 'fehlt' } } },
 ]
@@ -97,7 +114,7 @@ const historicEntries: LogEntry[] = (() => {
       id: 100 + i, aircraft: kind === 'Sprungbetrieb' ? 'OE-DZA' : 'OE-KFR', afp: 'alt', pilot: pilots[(i + day) % 4], kind, from: 'LOLW', to: 'LOLW', minutes, landings: kind === 'Sprungbetrieb' ? 1 : kind === 'Schulung' ? 5 : 2,
       date: `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`,
       times: { off: hm(off), to: hm(off + 5), ld: hm(off + 5 + minutes), on: hm(off + 10 + minutes) }, blockMin: minutes + 10,
-      fuel: j % 4 === 3 ? supply(40 + (i % 5) * 10) : undefined, oil: i % 17 === 0 ? supply(0.5) : undefined,
+      fuel: j % 4 === 3 ? supply(40 + (i % 5) * 10) : undefined, oil: i % 17 === 0 ? { amount: 0.5, receipt: { state: 'entfaellt' } } : undefined,
     })
   }
   return out
@@ -109,20 +126,16 @@ export interface FlightCharge {
   id: string; logId?: number; date: string; aircraft: string; pilot: string; kind: string; minutes: number; amount: number
   split: { who: string; memberId?: string; percent: number }[]; state: 'offen' | 'verrechnet'
 }
-export const RATE_PER_MIN = 5.15 // cost covering rate from Finanzen > Ergebnis
 export const memberIdByName = (n: string) => members.find((m) => m.name === n)?.id
-
-export function splitFor(kind: string, pilot: string): FlightCharge['split'] {
-  if (kind === 'Sprungbetrieb') return [{ who: 'Kostenstelle Sprungbetrieb', percent: 100 }]
-  if (kind === 'Schulung') return [{ who: 'Kostenstelle Schulung', percent: 100 }]
-  return [{ who: `Betriebskonto ${pilot}`, memberId: memberIdByName(pilot), percent: 100 }]
-}
+/** Seed data only: the booking and price of the first flights come from the default kinds. The live ones come from the club's kinds. */
+const seedSplit = (kind: string, pilot: string) => splitOf(DEFAULT_KINDS, (id) => initialCostCenters.find((c) => c.id === id)?.name ?? id, memberIdByName, kind, pilot)
+const SEED_RATE = 5.15
 
 const seedFlights: FlightCharge[] = [
-  { id: 'f1', logId: 3, date: '31.10.', aircraft: 'OE-DZA', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', minutes: 372, amount: 372 * RATE_PER_MIN, split: splitFor('Sprungbetrieb', 'Bernd Huber'), state: 'offen' },
-  { id: 'f4', date: '03.11.', aircraft: 'OE-KFR', pilot: 'Anna Berger', kind: 'Charter', minutes: 95, amount: 95 * RATE_PER_MIN, split: [{ who: 'Betriebskonto Anna Berger', memberId: 'm1', percent: 60 }, { who: 'Betriebskonto David Gruber', memberId: 'm4', percent: 40 }], state: 'offen' },
-  { id: 'f2', logId: 2, date: '24.10.', aircraft: 'OE-DZA', pilot: 'Eva Steiner', kind: 'Schulung', minutes: 65, amount: 65 * RATE_PER_MIN, split: splitFor('Schulung', 'Eva Steiner'), state: 'verrechnet' },
-  { id: 'f3', logId: 1, date: '17.10.', aircraft: 'OE-DZA', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', minutes: 301, amount: 301 * RATE_PER_MIN, split: splitFor('Sprungbetrieb', 'Bernd Huber'), state: 'verrechnet' },
+  { id: 'f1', logId: 3, date: '31.10.', aircraft: 'OE-DZA', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', minutes: 372, amount: 372 * SEED_RATE, split: seedSplit('Sprungbetrieb', 'Bernd Huber'), state: 'offen' },
+  { id: 'f4', date: '03.11.', aircraft: 'OE-KFR', pilot: 'Anna Berger', kind: 'Charter', minutes: 95, amount: 95 * SEED_RATE, split: [{ who: 'Betriebskonto Anna Berger', memberId: 'm1', percent: 60 }, { who: 'Betriebskonto David Gruber', memberId: 'm4', percent: 40 }], state: 'offen' },
+  { id: 'f2', logId: 2, date: '24.10.', aircraft: 'OE-DZA', pilot: 'Eva Steiner', kind: 'Schulung', minutes: 65, amount: 65 * SEED_RATE, split: seedSplit('Schulung', 'Eva Steiner'), state: 'verrechnet' },
+  { id: 'f3', logId: 1, date: '17.10.', aircraft: 'OE-DZA', pilot: 'Bernd Huber', kind: 'Sprungbetrieb', minutes: 301, amount: 301 * SEED_RATE, split: seedSplit('Sprungbetrieb', 'Bernd Huber'), state: 'verrechnet' },
 ]
 
 interface App {
@@ -159,9 +172,32 @@ interface App {
   /** Standard design = club data + standard layout. */
   branding: Branding
   loads: Load[]; setLoads: (fn: (l: Load[]) => Load[]) => void
+  /** Manifest days and the tandem guests booked for them. */
+  /** Manifest settings of the club: sport jump price, usual gap between flights, operating hours, duties of a day. */
+  settings: ManifestSettings; setSettings: (s: ManifestSettings) => void
+  days: ManifestDay[]; setDays: (fn: (d: ManifestDay[]) => ManifestDay[]) => void
+  bookings: TandemBooking[]; setBookings: (fn: (b: TandemBooking[]) => TandemBooking[]) => void
+  /** Voucher and ticket kinds with their versioned prices, and what was sold. */
+  catalog: CatalogItem[]; setCatalog: (c: CatalogItem[]) => void
+  vouchers: Voucher[]; setVouchers: (fn: (v: Voucher[]) => Voucher[]) => void
+  tickets: Ticket[]; setTickets: (fn: (t: Ticket[]) => Ticket[]) => void
+  /** Documents of the members (licence, medical ...) with their state of today; a newer one can be presented and checked. */
+  docsOf: (memberId: string) => MemberDocView[]
+  setMemberDocs: (memberId: string, fn: (docs: MemberDoc[]) => MemberDoc[]) => void
   afps: Record<string, AfpResult>; setAfp: (r: AfpResult) => void
-  /** Boarding started without an AFP: key -> reason. Shown to the reviewers. */
-  waived: Record<string, string>; waive: (key: string, reason: string) => void
+  /** Operation kinds of the club with price and booking, and what a flight of a kind is booked to. */
+  kinds: OperationKind[]; setKinds: (k: OperationKind[]) => void
+  splitFor: (kind: string, pilot: string) => FlightCharge['split']; rateOf: (kind: string, reg: string) => number
+  /** Club wide switches of the AFP (on or off, evidence, mail, reserve). */
+  afpConfig: AfpConfig; setAfpConfig: (c: AfpConfig) => void
+  /** Which operations the club runs (Skydive, Charterbetrieb); at least one is on. */
+  modules: ModulesConfig; setModules: (m: ModulesConfig) => void
+  /** Weight thresholds of the jump aircraft (by aircraft id), set in the aircraft details. */
+  /** Per aircraft: master data, mass and balance, maintenance, components, documents. */
+  aircraftData: Record<string, Detail>; setAircraftData: (id: string, fn: (d: Detail) => Detail) => void
+  /** Club-wide: keep older versions of aircraft documents. */
+  docVersioning: boolean; setDocVersioning: (on: boolean) => void
+  paxLimits: Record<string, PaxLimits>; setPaxLimits: (aircraftId: string, l: PaxLimits) => void
   reservations: Reservation[]; setReservations: (r: Reservation[]) => void
   /** Fuel left after the last flight per aircraft: the next flight starts with it. */
   restFuel: Record<string, number>; setRestFuel: (reg: string, litres: number) => void
@@ -206,21 +242,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loads, setLoads] = useState<Load[]>(() => {
     const w = (id: string) => members.find((m) => m.id === id)!
     return [
-      { id: 1, time: '09:40', status: 'gelandet', jumpers: [sportJumper(w('m1'), w('m1').weight), sportJumper(w('m2'), w('m2').weight)] },
-      { id: 2, time: '10:25', status: 'geplant', jumpers: [] },
-      { id: 3, time: '11:10', status: 'geplant', jumpers: [] },
+      { id: 1, dayId: 'd-2026-11-07', time: '09:40', status: 'gelandet', pilotId: 'm2', jumpers: [sportJumper(w('m1'), w('m1').weight), sportJumper(w('m2'), w('m2').weight)] },
+      { id: 2, dayId: 'd-2026-11-07', time: '10:25', status: 'geplant', pilotId: 'm2', jumpers: [] },
+      { id: 3, dayId: 'd-2026-11-07', time: '11:10', status: 'geplant', pilotId: 'm2', jumpers: [] },
+      { id: 4, dayId: 'd-2026-11-14', time: '10:30', status: 'geplant', jumpers: [tandemJumper(seedBookings.find((b) => b.id === 'bk5')!)] },
+      { id: 5, dayId: 'd-2026-11-14', time: '11:15', status: 'geplant', jumpers: [] },
     ]
   })
+  const [settings, setSettings] = useState<ManifestSettings>(DEFAULT_SETTINGS)
+  const [days, setDays] = useState<ManifestDay[]>(seedDays)
+  const [bookings, setBookings] = useState<TandemBooking[]>(seedBookings)
+  const [catalog, setCatalog] = useState<CatalogItem[]>(DEFAULT_CATALOG)
+  const [vouchers, setVouchers] = useState<Voucher[]>(seedVouchers)
+  const [tickets, setTickets] = useState<Ticket[]>(seedTickets)
+  const [memberDocs, setMemberDocsState] = useState<Record<string, MemberDoc[]>>(seedMemberDocs)
   const [afps, setAfps] = useState<Record<string, AfpResult>>({})
-  const [waived, setWaived] = useState<Record<string, string>>({})
+  const [kinds, setKinds] = useState<OperationKind[]>(DEFAULT_KINDS)
+  const [afpConfig, setAfpConfig] = useState<AfpConfig>(DEFAULT_AFP_CONFIG)
+  const [modules, setModules] = useState<ModulesConfig>(DEFAULT_MODULES)
+  const [aircraftData, setAircraftDataState] = useState<Record<string, Detail>>(seedDetails)
+  const [docVersioning, setDocVersioning] = useState(true)
+  const [paxLimits, setPaxLimitsState] = useState<Record<string, PaxLimits>>(seedPaxLimits)
   const [reservations, setReservations] = useState<Reservation[]>(seedReservations)
-  const [restFuel, setRestFuelState] = useState<Record<string, number>>({})
+  const [restFuel, setRestFuelState] = useState<Record<string, number>>({ 'OE-DZA': 90, 'OE-KFR': 60, 'OE-AXB': 55 })
   const [types, setTypes] = useState<MembershipType[]>(membershipTypes)
   const [patterns, setPatterns] = useState<FeePattern[]>(initialPatterns)
   const [memberTypes, setMemberTypes] = useState<Record<string, string>>(() => Object.fromEntries(members.map((m) => [m.id, m.type])))
   const typeAccount = Object.fromEntries(types.map((t) => [t.id, t.account]))
   const typeOf = (id: string) => types.find((t) => t.id === memberTypes[id]) ?? types[0]
-  const ledger = useLedger()
+  /** A payment or refund in Finanzen (bank line assigned, cash posted) reaches the voucher or ticket it belongs to. */
+  const onPayment = (e: PaymentEvent) => {
+    setVouchers((all) => all.map((v) => (v.code === e.code ? payVoucher(v, e, TODAY_ISO) : v)))
+    setTickets((all) => all.map((t) => (t.code === e.code ? payTicket(t, e, TODAY_ISO) : t)))
+  }
+  const ledger = useLedger(onPayment)
   const me = members.find((m) => m.id === personaId)!
   const myAssignments = (assignments[personaId] ?? []).filter((x) => !x.until || x.until >= TODAY_ISO)
   const persona: Persona = {
@@ -251,7 +306,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       entries,
       addEntry: (e) => {
         setEntries((es) => [e, ...es])
-        setFlights((fs) => [{ id: `f-${e.id}`, logId: e.id, date: e.date.slice(0, 6), aircraft: e.aircraft, pilot: e.pilot, kind: e.kind, minutes: e.minutes, amount: e.minutes * RATE_PER_MIN, split: splitFor(e.kind, e.pilot), state: 'offen' }, ...fs])
+        setFlights((fs) => [{ id: `f-${e.id}`, logId: e.id, date: e.date.slice(0, 6), aircraft: e.aircraft, pilot: e.pilot, kind: e.kind, minutes: e.minutes, amount: e.minutes * rateFor(kinds, e.kind, e.aircraft), split: splitOf(kinds, (id) => ledger.costCenters.find((c) => c.id === id)?.name ?? id, memberIdByName, e.kind, e.pilot), state: 'offen' }, ...fs])
       },
       patchEntry: (id, p) => setEntries((es) => es.map((e) => (e.id === id ? { ...e, ...p } : e))),
       flights,
@@ -286,9 +341,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setHistory((h) => [{ id: Date.now() + Math.random(), memberId: m.id, at: NOW_ISO, type: 'Mitgliedschaft', text: `Ohne Formular angelegt: ${t}`, details: profile.email ? [`E-Mail: ${profile.email}`] : undefined, exception: { ...exception, created: true }, by: me.name }, ...h])
       },
       setProfile: (id, p) => setProfiles((all) => ({ ...all, [id]: { ...(all[id] ?? defaultProfile(members.find((m) => m.id === id)?.name ?? '')), ...p } })), ledger,
-      loads, setLoads: (fn) => setLoads(fn),
+      loads, setLoads: (fn) => setLoads(fn), settings, setSettings, days, setDays: (fn) => setDays(fn), bookings, setBookings: (fn) => setBookings(fn), catalog, setCatalog, vouchers, setVouchers: (fn) => setVouchers(fn), tickets, setTickets: (fn) => setTickets(fn),
+      docsOf: (id) => (memberDocs[id] ?? []).map((d) => ({ ...d, state: docStateOf(d.expires, TODAY_ISO) })),
+      setMemberDocs: (id, fn) => setMemberDocsState((all) => ({ ...all, [id]: fn(all[id] ?? []) })),
       afps, setAfp: (r) => setAfps((a) => ({ ...a, [r.key]: r })),
-      waived, waive: (k, reason) => setWaived((w) => ({ ...w, [k]: reason })),
+      afpConfig, setAfpConfig, modules, setModules, kinds, setKinds, rateOf: (k, reg) => rateFor(kinds, k, reg),
+      splitFor: (k, pilot) => splitOf(kinds, (id) => ledger.costCenters.find((c) => c.id === id)?.name ?? id, memberIdByName, k, pilot),
+      aircraftData, setAircraftData: (id, fn) => setAircraftDataState((all) => ({ ...all, [id]: fn(all[id]) })), docVersioning, setDocVersioning,
+      paxLimits, setPaxLimits: (id, l) => setPaxLimitsState((all) => ({ ...all, [id]: l })),
       reservations, setReservations,
       restFuel, setRestFuel: (reg, l) => setRestFuelState((r) => ({ ...r, [reg]: l })),
       types, setTypes, patterns, setPatterns, typeOf,

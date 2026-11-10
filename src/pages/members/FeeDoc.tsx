@@ -1,3 +1,4 @@
+import PrintFrame, { PRINT_PAGE } from '../../PrintFrame'
 import { eur, members } from '../../data'
 import { useApp } from '../../state'
 import { Button, Drawer } from '../../ui'
@@ -33,7 +34,8 @@ export function FeeDocDrawer({ doc, onClose, onSend }: { doc: Doc | null; onClos
 export function InvoiceSheet({ fee, kind, no, design, legal, lang = 'de' }: { fee: Fee; kind: Doc['kind']; no: string; design: Branding; legal?: string; lang?: Lang }) {
   const t = ui(lang)
   return (
-    <div className="rounded-xl border border-line bg-white p-5 text-sm shadow-sm">
+    <PrintFrame name={`${kind === 'Rechnung' ? t.invoice : t.reminder} ${no}`}>
+    <div {...PRINT_PAGE} className="rounded-xl border border-line bg-white p-5 text-sm shadow-sm">
       <LetterHead design={design} /><div className="mt-2 text-right"><div className="font-semibold">{kind === 'Rechnung' ? t.invoice : t.reminder}</div><div className="text-xs text-muted">{no}</div></div>
       <div className="mt-5"><div className="text-xs text-muted">{t.to}</div><div className="font-medium">{fee.person}</div></div>
       <div className="mt-5 flex justify-between border-y border-line py-3"><span>{t.fee} {fee.type}<span className="block text-xs text-muted">{fee.note}</span></span><span className="font-semibold tabular-nums">{eur(fee.amount)}</span></div>
@@ -43,6 +45,7 @@ export function InvoiceSheet({ fee, kind, no, design, legal, lang = 'de' }: { fe
       <div className="mt-4 text-xs text-muted">{design.iban ? `IBAN ${design.iban} · ` : ''}{t.paymentRef}: {no} {fee.person}</div>
       <div className="mt-4 border-t border-line pt-2"><LetterFoot design={design} /></div>
     </div>
+    </PrintFrame>
   )
 }
 

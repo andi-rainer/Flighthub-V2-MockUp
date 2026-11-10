@@ -1,4 +1,3 @@
-import { FileDown } from 'lucide-react'
 import { useState } from 'react'
 import { useApp } from '../../state'
 import { Button, Card, Segmented } from '../../ui'
@@ -23,12 +22,9 @@ export default function FormPreview({ form, version, lang = 'de' }: { form: Form
   const values = sampleValues(version)
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        {document ? <h3 className="text-sm font-semibold">Vorschau</h3> : <Segmented<Mode> value={mode} onChange={setMode} options={[{ value: 'pdf', label: 'PDF' }, { value: 'online', label: 'Online-Formular' }]} />}
-        {!document && mode === 'pdf' && <Button><FileDown size={14} /> Blanko-PDF</Button>}
-      </div>
+      {document ? <h3 className="text-sm font-semibold">Vorschau</h3> : mode === 'online' && <Segmented<Mode> value={mode} onChange={setMode} options={[{ value: 'pdf', label: 'PDF' }, { value: 'online', label: 'Online-Formular' }]} />}
       {document ? <InvoiceSheet fee={fees[0]} kind="Rechnung" no="RE-2026-0150" design={version.design} legal={textOf(version, lang)} lang={lang} />
-        : mode === 'pdf' ? <PdfSheet title={title} version={version} lang={lang} />
+        : mode === 'pdf' ? <PdfSheet title={title} version={version} lang={lang} lead={<Segmented<Mode> value={mode} onChange={setMode} options={[{ value: 'pdf', label: 'PDF' }, { value: 'online', label: 'Online-Formular' }]} />} />
         : (
           <Card className="space-y-4 p-5">
             <div className="flex items-center gap-3"><ClubMark b={version.design} size={32} /><div className="font-semibold">{version.design.name}</div></div>

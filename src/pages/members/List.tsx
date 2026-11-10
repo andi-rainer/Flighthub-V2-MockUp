@@ -15,7 +15,7 @@ type Filter = 'alle' | 'offen' | 'bezahlt' | 'ausnahme'
  */
 export default function List() {
   const nav = useNavigate()
-  const { ledger, weights, hasAccount, windDown, functionNames, typeOf, fees, apps } = useApp()
+  const { ledger, weights, hasAccount, windDown, functionNames, typeOf, fees, apps, docsOf } = useApp()
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Filter>('alle')
   const feeFor = (name: string) => feeOf(fees, name)
@@ -57,7 +57,7 @@ export default function List() {
             {paging.rows.map((m) => {
               const bal = ledger.balances[m.id] ?? 0
               const fee = feeFor(m.name)
-              const hints = [...m.docs.filter((d) => d.state !== 'ok').map((d) => ({ label: d.label, tone: tone[d.state] })), ...(!weights[m.id] ? [{ label: 'Gewicht fehlt', tone: 'warn' as const }] : [])]
+              const hints = [...docsOf(m.id).filter((d) => d.state !== 'ok').map((d) => ({ label: d.label, tone: tone[d.state] })), ...(!weights[m.id] ? [{ label: 'Gewicht fehlt', tone: 'warn' as const }] : [])]
               const end = ends(m.name)
               return (
                 <tr key={m.id} onClick={() => nav(`/mitglieder/${m.id}`)} className="cursor-pointer hover:bg-slate-50">

@@ -1,139 +1,204 @@
-# 02 · FlightHub V2: was sicher kommt (Beschlüsse)
+# 02 · FlightHub V2: was feststeht
 
-Stand: 09.11.2026. Lies zuerst die Statuslegende in [README.md](README.md).
-
-Hier steht **nur**, was Andreas gesagt, entschieden oder ausdrücklich akzeptiert hat. Jede Zeile trägt ihre Quelle:
-
-- `[N dd.mm.]` Andreas hat es so gesagt oder entschieden (Datum der Nachricht in der Sitzung 06.–09.11.2026).
-- `[akzeptiert]` Vorschlag von Claude, den Andreas pauschal angenommen hat („Der Rest ist alles super und gute Vorschläge“, 06.11.). Die Richtung steht fest, die Einzelheiten sind noch nicht ausgearbeitet.
-- `[N, im Dummy umgesetzt]` Wunsch von Andreas, Umsetzung im Klickdummy durch Claude; die genaue Form ist Claude-Entwurf (siehe [03-klickdummy.md](03-klickdummy.md)).
-
-Ideen, offene Fragen und Vorschläge ohne Zustimmung stehen **nur** in [04-offen-und-ideen.md](04-offen-und-ideen.md).
+Alles hier ist `[Beschlossen]`, sofern nicht anders markiert. Symbole: ✔ im Klickdummy gezeigt, ○ im Dummy noch nicht gezeigt (Umsetzung nötig). Ohne Symbol: Grundsatz oder Stand im Dummy nicht geprüft. Offene Abläufe und Vorschläge stehen nur in [04](04-offen-und-ideen.md), Details zum Dummy in [03](03-klickdummy.md).
 
 ## 1. Ziel und Rahmen
 
-- V2 ist ein **komplett neues Projekt** mit neuen Technik-Entscheidungen. Die vollständige Spezifikation kommt vor dem Bau, V1 dient nur als Prototyp. `[N 06.11.]`
-- Hauptanliegen: weniger technische Schulden, eine **leichter verständliche und intuitivere Bedienung**, bessere Performance. `[N 06.11.]` Dazu nennt Andreas UI und einfache Bedienung als Hauptanliegen neben Performance. `[N 06.11.]`
-- FlightHub wird die **eine Plattform für alles**: Bankdaten importieren, Barausgaben verfolgen, Rechnungen an jede Buchung hängen, Rechnungen für Flüge an Dritte erstellen. Das zweite bezahlte Programm (Vereinsplaner) soll entfallen. `[N 06.11.]`
-- Aus dem echten Geldfluss muss sichtbar sein, ob die Sparten (Sportspringen, Tandem, Charter von Mitgliedern, Charter an andere Fallschirmclubs) tragfähig sind, auch als gemeinnütziger Verein. Später sollen die **echten Kosten** bekannt sein, damit ein angemessener Charter-Satz für Mitglieder berechnet werden kann, **inklusive Fixkosten**. `[N 06.11.]`
-- Die Spezifikation soll wie ein **Benutzerhandbuch** funktionieren (spezifikations- und testgetrieben); dafür Prototypen wie der Klickdummy. `[N 06.11.]`
-- **Dynamisch:** mehrere Flugzeuge, ein Flugzeug kann nur für Springen oder nur für Charter genutzt werden, ein Verein macht evtl. nur das eine oder das andere. `[N 06.11.]`
-- **Betrieb:** weniger als 10 Vereine, **eine Installation pro Verein**, jeder hostet selbst, **kein Mandantensystem**. `[N 06.11.]`
-- **Ausweise und Lizenzen** werden künftig nicht mehr gescannt, sondern nur noch **verfolgt** (Ablaufdatum, welche Lizenzen). `[N 06.11.]`
-- **Geräte:** Am Sprungtag meist Tablet, gelegentlich Handy. Außerhalb des Manifests ist der **PC das Hauptgerät** (Verrechnung, Mitgliederverwaltung, Flugzeugdaten, Tickets und Voucher, Shop). Manifest, Check-in, Bordbuch und Mein Konto sind für Tablet und Handy gebaut. `[N 06.11.]`
-- **Nicht jetzt:** Notruf mit Position bei Außenlandung (außerhalb des Umfangs), eine eigene Mobile-App. Denkbar bleibt eine Version für Mobil und eine für Laptop und Tablet. `[N 06.11.]`
-- **Technik der echten V2** (Sprachen, Frameworks, Datenbank): entscheidet Andreas selbst („das Technische habe ich im Griff“). `[N 06.11.]` Der Klickdummy nutzt Technik, die Claude gewählt hat (Andreas: „Du entscheidest“). `[N 06.11.]`
-- Der Klickdummy ist **nur** zum Zeigen von UI und klaren Abläufen, damit nach Screenshots und Klickfolgen in einem komplett neuen Projekt gebaut werden kann. Keine echte Logik. `[N 07.11.]`
+- V2 ist ein komplett neues Projekt mit neuen Technik-Entscheidungen. V1 dient nur als Prototyp. Die Spezifikation kommt vor dem Bau und funktioniert wie ein Benutzerhandbuch (spezifikations- und testgetrieben).
+- Ziele: weniger technische Schulden, leichter verständliche Bedienung, bessere Performance.
+- **Eine Plattform für alles:** Bankdaten importieren, Barausgaben verfolgen, Belege an jede Buchung hängen, Rechnungen für Flüge an Dritte erstellen. Das zweite bezahlte Programm (Vereinsplaner) entfällt.
+- Aus dem echten Geldfluss muss sichtbar sein, ob die Sparten (Sportspringen, Tandem, Charter von Mitgliedern, Charter an andere Fallschirmclubs) tragfähig sind, auch als gemeinnütziger Verein. ✔ Ergebnis je Sparte
+- Später sollen die echten Kosten inklusive Fixkosten bekannt sein, um einen angemessenen Charter-Satz für Mitglieder zu berechnen. ○ (Methode: [04](04-offen-und-ideen.md))
+- Dynamisch: mehrere Flugzeuge; ein Flugzeug nur für Springen oder nur für Charter; ein Verein macht evtl. nur das eine oder das andere.
+- Betrieb: weniger als 10 Vereine, **eine Installation pro Verein**, jeder hostet selbst, kein Mandantensystem.
+- Ausweise und Lizenzen werden nicht mehr gescannt, nur noch verfolgt (Ablaufdatum, welche Lizenzen).
+- Geräte: Am Sprungtag meist Tablet, gelegentlich Handy. Sonst ist der PC das Hauptgerät (Verrechnung, Mitglieder, Flugzeugdaten, Tickets und Voucher, Shop). Manifest, Check-in, Bordbuch und Mein Konto sind für Tablet und Handy gebaut.
+- Nicht jetzt: Notruf mit Position bei Außenlandung, eigene Mobile-App.
+- Der Klickdummy zeigt nur UI und klare Abläufe, keine echte Logik. Die Technik der echten V2 ist nicht entschieden ([04](04-offen-und-ideen.md)).
 
-## 2. Grundsätze für die Bedienung
+## 2. Bedienung (gilt überall)
 
-- **Ein klarer Weg zum Ziel, über das gesamte Projekt.** Viele Wege zum gleichen Ergebnis sind ein Fehler. `[N 07.11.]`
-- **Aktionen in Tabellen** übersichtlich und einheitlich; Schaltflächen nicht verstreut. `[N 06.11.]` (Umsetzungsmuster: [03](03-klickdummy.md))
-- **Pagination überall** bei langen Listen, von Anfang an. `[N 07.11.]`
-- **Schlanke Listen** nach dem Vorbild von V1 (viele Zeilen pro Seite). `[N 07.11.]`
-- **Rückweg:** Wer eine Detailseite aus einer Liste öffnet, muss zurückkommen, per Zurücktaste des Browsers und per Link in der Oberfläche. `[N 09.11.]`
-- **Keine Info-Texte**, die nur wiederholen, was Andreas Claude erklärt hat. Regeln gehören in die Dokumentation, nicht in die Oberfläche. `[N 08.11.]`
-- **Dashboard** ist wichtig und neu zu gestalten; das V1-Dashboard ist kein Vorbild. `[N 06.11.]`
-- Rechte, Anmeldung und Geräte: siehe Abschnitt 8.
+- **Ein klarer Weg zum Ziel.** Ausnahmen sind diskret, brauchen einen Grund und eine Bestätigung und werden dokumentiert.
+- **Eine Personen-Auswahl für die ganze App:** durchgehende Komponente mit Sofortsuche (Name oder Funktion), die nur Mitglieder mit der passenden Funktion oder Berechtigung zeigt, Zusatzinformationen darstellt und je nach Aufgabe sinnvoll sortiert. ✔
+- Aktionen in Tabellen übersichtlich und einheitlich, nicht verstreut.
+- Pagination bei allen langen Listen; Listen schlank wie in V1.
+- Rückweg: Jede Detailseite aus einer Liste hat „Zurück zu …“, und die Zurücktaste des Browsers führt in dieselbe Ansicht. ✔
+- Keine Info-Texte in der Oberfläche, die nur Regeln wiederholen. Regeln stehen in der Dokumentation.
+- Dashboard: wichtig, neu zu gestalten; das V1-Dashboard ist kein Vorbild. ✔ (Aufbau: Entwurf)
+- Rechte, Anmeldung, Geräte: Abschnitt 8.
 
 ## 3. Sprungtag und Manifest
 
-- **Check-in für Sportspringer** statt Buchung mit Zeitfenster; die Buchung `book-jump` aus V1 entfällt. `[N 06.11.]`
-- **Gewicht je Springer ist Pflicht** (für den Schwerpunkt). `[N 06.11.]`
-- Der Schwerpunkt braucht auch den **Treibstoff, den nur der Pilot kennt**. `[N 06.11.]`
-- **Tandem** behält Slots und Zeitfenster; für Sportspringer gibt es keine. `[akzeptiert]` (Anwesenheit statt Buchung)
-- **Abschluss eines Operation Day:** gebucht wird **immer vom Betriebskonto** (Transparenz). Bei Barzahlung kann die Einzahlung direkt gebucht werden, eine Überweisung erst, wenn sie eingegangen ist. **Keine automatischen Buchungen.** Es muss leicht und nachvollziehbar sein, wie Geld hereinkommt. `[N 06.11.]`
-- **Tandem-Check-in vor Ort** (wie in V1) mit unterschriebenem Beförderungsvertrag. `[N 08.11.]` (im Dummy noch nicht gebaut)
+- Sportspringer **checken ein** statt eine Buchung mit Zeitfenster zu machen; `book-jump` entfällt. ✔
+- Gewicht je Springer ist Pflicht (Schwerpunkt). ✔ Der Schwerpunkt braucht auch den Treibstoff, den nur der Pilot kennt. ✔
+- Tandem behält Slots und Zeitfenster. `[Richtung]`
+- Abschluss eines Operation Day: gebucht wird immer vom Betriebskonto. Bar kann direkt gebucht werden, eine Überweisung erst nach Eingang. **Keine automatischen Buchungen.** Es muss leicht nachvollziehbar sein, wie Geld hereinkommt. ✔ (Aufbau des Dialogs: Entwurf)
+- Der Menüpunkt heißt **Manifest**. Dort werden **Tage angelegt**, **Flüge angelegt** und **Tandems und Sportspringer den Flügen zugeordnet**. ✔
+- **Tandem-Check-in** als eigene Seite ohne Login, die auf einem anderen Gerät läuft (wie in V1); der Gast unterschreibt den Beförderungsvertrag. ✔
+- **Tandem-Master am Gast:** Jeder Tandem-Gast bekommt einen Tandem-Master, **vor der Zuordnung zum Flug oder direkt auf dem Flug**; gespeichert wird er an der Buchung, er ist überall derselbe und wandert mit dem Gast. Wählbar sind Mitglieder mit der Fähigkeit `manifest.tandem.master` (Funktion Tandem-Master), die mit den wenigsten Tandems am Tag zuerst; ein Master fliegt pro Flug nur einen Gast. Ohne Master startet das Boarding nicht. Im AFP erscheint der Master mit Namen und Gewicht. ✔
+- **Zahlung am Tandem-Gast:** Das Manifest zeigt zum Gast die **Nummer des Tickets oder Gutscheins** und ob bezahlt ist (gelesen vom Ticket, nicht doppelt gepflegt). **Überweisung offen** stoppt das Boarding, außer es wird geklärt: entweder die **Zahlung ist da** (Bar oder eine Überweisung aus Finanzen, wird dort gebucht) oder die **Überweisungsbestätigung wurde geprüft**, obwohl das Geld noch nicht in Finanzen ist (Recht `manifest.payments.update`, sensibel). Letzteres ist **keine Zahlung**: es hält nur fest, wer geprüft hat (mit Hinweis), der Gast darf fliegen. Der Kassier sieht diese Fälle in Finanzen > Bank („Eingang erwartet“, „Schon geflogen“), beim Zuordnen einer Überweisung stehen sie oben mit „Nachweis“; die Zuweisung löscht den Nachweis und bucht die Zahlung. ✔
+- Tandem-Buchungen mit Slots gab es in V1 und sie waren im Shop sichtbar; für reine Sportspringer-Tage waren sie hinderlich. Wie das in V2 gelöst wird: `[Offen]`, Entwurf im Dummy in [03](03-klickdummy.md).
+- Die Bedienung für den Koordinator muss schnell und intuitiv sein. ✔ (Umsetzung: `[Entwurf]`)
+- **Tandem-Zeitfenster sind frei planbar:** je Fenster eigene Zeiten und eigene Anzahl Tandems (z. B. nur 2 Fenster mit je 6 Tandems = 3 Flüge); Dauer und Größe dürfen sich unterscheiden, jedes Fenster ist einzeln bearbeitbar. ✔
+- **Beförderungsvertrag:** Name, Kontaktdaten und Gewicht sind änderbar, denn den Gutschein kann jemand anderes gebucht haben; die Buchung übernimmt die unterschriebenen Angaben. ✔
+- **Sportspringer am Platz:** Der Koordinator kann einen Springer hinzufügen und auschecken (**Check-out**, wenn er mitten am Tag geht). Es gibt **keine Voranmeldung** für Sportspringer, nur Anwesenheit. Anwesende Sportspringer sind beliebig einplanbar. Auf Flügen, die er schon geflogen ist, bleibt er für die Verrechnung. ✔
+- **Mehrere Sprünge am Tag:** Ein Sportspringer bleibt nach der Landung eingecheckt und wartet wieder. Er ist auf **mehrere Flüge** planbar, die noch nicht abgeflogen sind, auch solange sein Flug noch in der Luft ist. Ein Tandem-Gast fliegt einmal. Die Sprünge eines Tages werden je Person zusammen verrechnet. ✔ (Umsetzung: `[Entwurf]`)
+- **Flüge anlegen mit einem Knopf:** „+ Flüge anlegen“ statt „+ Flug“ und „Mehrere …“; in der Seitenleiste wählt der Koordinator, ob einer oder mehrere. **Zeit und Pilot sind nur Vorschläge** (letzter Flug plus Abstand, Pilot des letzten Flugs) und änderbar; **ein Flug braucht dieselbe kurze Bestätigung** wie mehrere. ✔
+- **Dokumente der Mitglieder (Lizenz, Medical):** Wer am Manifest ein Dokument-Problem sieht, sieht **welches Dokument** und kann es dort **erneuern**, wenn das Mitglied ein aktuelleres vorlegt. **Es werden keine Dateien hinterlegt (Datenschutz):** es zählt die **Bestätigung des angemeldeten Benutzers, das Original geprüft zu haben** (Name und Tag im Verlauf). Zwei Wege: das Mitglied **meldet** das neue Dokument selbst (neues Ablaufdatum, Nummer; `documents.upload.own`) und das Personal **prüft das Original und gibt frei oder lehnt mit Grund ab** (`documents.approve`); oder das Personal sieht das Original vor Ort und trägt es direkt ein (gilt sofort). Der Manifest-Koordinator hat dafür `documents.view.all` und `documents.approve`. Vorherige Stände bleiben im Verlauf, nie überschrieben. ✔
+- **Keine Doppelbuchung:** Dieselbe Person darf nie zweimal oder öfter auf demselben Flug stehen. Das echte Projekt prüft das und verbietet es (in der Datenbank, nicht nur in der Oberfläche). ○ (Der Dummy verhindert es nur in der Oberfläche.)
+- **Erwartete Tandems haben Vorrang** bei der Planung der Flüge. ✔ (Umsetzung: `[Entwurf]`)
+- **Sportspringer, der nicht kommt, aber den Platz bezahlt**, damit die anderen fliegen können: Der Platz bleibt auf dem Flug belegt, es sitzt niemand an Bord (zählt nicht für Gewicht und Schwerpunkt), er wird mit dem Sprungpreis belastet. Alternativ nimmt der Koordinator ihn ohne Gebühr vom Flug. ✔
+- **Manifest-Einstellungen** je Verein: Sprungpreis für Sportspringer (im Dummy 40 €; **versioniert wie die Preise der Betriebsarten:** eine Änderung gilt ab dem Tag der Änderung, der alte Preis wird archiviert, Sprungtage davor behalten ihren Preis), Standardabstand zwischen Flügen, Standard-Betriebszeit und die Dienste eines Tags. ✔
+- **Dienste bleiben einfach:** Es geht nur darum, dass klar ist, wer da ist und welches Amt in der Planung noch fehlt. Im Tag stehen sie klein als Randnotiz, groß nur beim Bearbeiten. ✔
+- **Dienste an einem Manifest-Tag** (z. B. Manifest-Koordinator, Shuttlebusfahrer, weitere): Neben dem Flugzeug werden Personen für Dienste gewählt. In der Konfiguration ist je Dienst festlegbar, ob er **Pflicht oder optional** ist und **welche Funktion** ein Mitglied haben muss (oder eine von mehreren Funktionen, „1 aus x“). ✔
+- Ein Dienst kann **mehrere Personen** haben, bei Pflicht **mindestens eine** (einstellbar). Fehlt ein Pflichtdienst, wird das **nur gemeldet**, der Tag lässt sich trotzdem starten. ✔
+- Bei jedem Dienst werden die **Stunden** festgehalten (volle Stunden von–bis, keine Minuten). Eine Person kann **getauscht** werden, z. B. zur Tageshälfte. ✔
+- **Dienstplanung:** Es ist ersichtlich, wie oft und wie viele Stunden ein Mitglied einen Dienst geleistet hat. Ein Eintrag zählt als geleistet, sobald der Tag abgeschlossen oder abgesagt ist; davor ist er geplant. ✔
+- **Berechtigungen statt Funktionsnamen:** Weil Funktionen frei konfigurierbar sind, hängt das Verhalten an Berechtigungen. Für Skydive-Flüge gibt es die Berechtigungen „Sprungflüge fliegen“ (als Pilot eines Flugs eintragbar) und „Als Sportspringer springen“ (einchecken, einteilbar). ✔ (Ausnahme: Dienste fragen bewusst nach Funktionen.)
+- **Plätze je Flugzeug** gehören zu den Flugzeug-Details (kommt noch); im Dummy ein fester Wert. ○
+- **Kein vorläufiger Schwerpunkt im Manifest,** weil die Spritmenge dort unbekannt ist. Stattdessen steht auf jedem Flug das **Gesamtgewicht der Springer**. Bei Absetzflugzeugen sind in den Flugzeug-Details **Schwellen** einstellbar: grün bis zur gelben Schwelle, darüber gelb, optional orange, über dem Maximum rot. ✔
+- Auf jedem Flug ist ein **Pilot** einzutragen; fehlt er, wird das **nur gemeldet**. ✔
+- Ein noch nicht gestarteter Tag zeigt den Hinweis, dass er gestartet werden muss, damit Sportspringer einchecken können. ✔
 
 ## 4. AFP und Flugablauf
 
-- **AFP (Abbreviated Flight Plan)** ersetzt das Papierformular: Passagiere mit Gewicht, Treibstoff, Leermasse, Vergleich mit MTOW, Prüfung des Schwerpunkts, Endurance aus der Spritmenge, nach der Landung Remaining Endurance und Restkraftstoff. Es muss auf **iPad mini und Smartphone** funktionieren, weil es erst am Flugzeug passiert, örtlich getrennt von der Dropzone. `[N 06.11.]`
-- **Eigene Seite**, kein Dialog und kein Überblendfenster. Schritte hintereinander, vor und zurück möglich. `[N 06.11.]`
-- **Vier Zeiten chronologisch:** Off-block, Take-off, Landing, On-block; daraus ergibt sich eine Zeit, die nicht direkt änderbar ist; nur diese vier Zeiten sind änderbar. `[N 06.11.]`
-- **Masse und Schwerpunkt müssen vor Off-block im Limit sein.** `[N 06.11.]`
-- **Nur Skydive hat vorausgefüllte Gewichte** (nicht jeder Passagier ist Mitglied). Bei Charter trägt immer der Pilot ein. `[N 06.11.]`
-- Das **AFP gibt es nur für Skydive**. Charterflüge heißen **„Flug beginnen“**, mit derselben Logik. Bordbuch-Einträge dürfen ohne AFP erfolgen. `[N 06.11.]`
-- Nach Abschluss eines AFP steht **der nächste Flug**, wenn verfügbar, bereit und lässt sich mit minimalem Aufwand öffnen. `[N 06.11.]`
+- **AFP (Abbreviated Flight Plan)** ersetzt das Papierformular: Passagiere mit Gewicht, Treibstoff, Leermasse, Vergleich mit MTOW, Schwerpunkt, Endurance aus der Spritmenge, nach der Landung Remaining Endurance und Restkraftstoff. Muss auf iPad mini und Smartphone funktionieren (Ausfüllen am Flugzeug, getrennt von der Dropzone). ✔
+- Eigene Seite, kein Dialog; Schritte hintereinander, vor und zurück möglich. ✔
+- Vier Zeiten chronologisch: Off-block, Take-off, Landing, On-block; die daraus berechnete Zeit ist nicht direkt änderbar. ✔
+- Masse und Schwerpunkt müssen vor Off-block im Limit sein. ✔
+- Vorausgefüllte Gewichte gibt es nur bei Skydive (nicht jeder Passagier ist Mitglied); bei Charter trägt immer der Pilot ein. ✔
+- AFP nur für Skydive. Charterflüge heißen „Flug beginnen“, mit derselben Logik. Bordbuch-Einträge ohne AFP sind erlaubt. ✔
+- **Freigabe des AFP mit Unterschrift:** Der Pilot bestätigt, dass die **Vorflugkontrolle ordnungsgemäß durchgeführt** wurde, und unterschreibt. Daraus entsteht ein **PDF** (Nachweis von Masse und Schwerpunkt für Kontrollen), das bei der Freigabe **per Mail an den Piloten** geht und **im AFP jederzeit geöffnet** werden kann. Im Dokument und bei der Freigabe steht klar, dass der **Pilot dafür verantwortlich** ist, dass die Angaben richtig sind und mit den Werten des **AFM/POH** übereinstimmen. ✔
+- **Inhalt des PDF:** Der Briefkopf zeigt nur Logo und Name (wenn gesetzt), keine Adresse, IBAN oder ZVR-Zahl, denn das Dokument dient als Nachweis gegenüber Kontrollorganen. Bei den Prüfungen stehen nur „Gewichte vollständig“, „Treibstoff“ und „Endurance“. Der Knopf der Freigabe heißt „AFP freigeben und an {E-Mail} senden“. ✔
+- **Ist der AFP noch offen,** verlinkt die Marke „AFP offen“ am Flug im Manifest auf ihn. ✔
+- **Fehlen Gewichte oder CG-Grenzen des Flugzeugs,** ist kein Nachweis von Masse und Schwerpunkt möglich, ein **Flug aber schon.** Das steht klar da: Der Pilot sorgt selbst dafür, den Nachweis zu erstellen und mitzuführen, und verantwortet ihn; er bestätigt das vor der Freigabe. Es entsteht kein PDF. ✔
+- **Betriebsarten** (wie in V1, besser): Jeder Flug hat eine Betriebsart mit eigenem **Preis je Flugminute** und eigener **Standard-Verbuchung**. **Jedes Flugzeug hat seinen eigenen Preis** (kein einheitlicher Preis für alle, wie schon in V1); ohne Preis ist die Betriebsart für das Flugzeug nicht möglich (Sprungbetrieb nur mit Absetzflugzeug). **Preise gelten nie rückwirkend:** Ändert sich ein Preis oder die Verbuchung, beginnt eine neue Version ab dem Tag der Änderung und die bisherige wird **archiviert** (gültig von/bis, lesbar, nicht änderbar, wie alte Formularversionen); bereits eingetragene und abgerechnete Flüge behalten Preis und Verbuchung. **Sprungbetrieb wird auf eine Kostenstelle gebucht**, nicht nach Tandem und Sport aufgeteilt (gemischte Flüge haben keinen festen Anteil). Beispiele: z. B. Sprungbetrieb auf eine Kostenstelle statt auf den Piloten, Wartungsflug halb Pilot und halb Vereins-Kostenstelle, Charter ganz auf den Piloten. Der Verein definiert sie unter **Vereinseinstellungen > Betriebsarten**. Bei Flügen, die keine Sprungflüge sind, fragt der AFP („Flug beginnen“) nach der Art. Der Kassier bestätigt die Verbuchung weiterhin jedes Mal. ✔ (Aufbau: `[Entwurf]`) Die Betriebsarten haben eine **Detailansicht** (Klick auf die Zeile) mit allen Feldern und dem **Löschen**, **zweifach bestätigt**; es gibt kein Aktionsmenü.
+- **Im Manifest genügt bei freigegebenem AFP die Information und der Link** („AFP freigegeben um …“, dezent „M&B-PDF“), ohne Schwerpunkt und Gewichte. Nach der Landung wird daraus **eine Marke oben rechts** („Gelandet · Landezeit“ mit Symbol für den M&B-Nachweis); die Gewichtszeile der Springer entfällt dann. ✔
+- **Alternate im AFP:** Zur geplanten Flugzeit kommt die **Flugzeit zum Alternate** (Vorgabe je Verein, je Flug änderbar). **Geplante Flugzeit + Alternate + Reserve müssen immer vor dem Flug im Tank sein** (Prüfung „Endurance“, im Treibstoffschritt steht die Mindestmenge, der Nachweis nennt alle drei Zeiten). ✔
+- **Jedes angezeigte PDF** (Formulare, Anträge, Beförderungsvertrag, M&B-Nachweis) lässt sich **herunterladen oder drucken** (ein Splitbutton: Hauptaktion Herunterladen, Drucken über den Pfeil), mit dem Dokumentnamen als Dateiname. Im echten Projekt erzeugt der Server das PDF, das Layout bleibt dasselbe. ✔
+- **Module Skydive und Charterbetrieb** sind je Verein ein- und ausschaltbar (Vereinseinstellungen > Module). **Mindestens eines bleibt eingeschaltet.** Ausschalten **blendet aus, löscht nichts**; die Daten sind beim Einschalten wieder da. Skydive umfasst Manifest und Tandem-Check-in, Tickets und Voucher, Shop und Mails, die Betriebsart Sprungbetrieb, das Springergewicht der Flugzeuge, die Sprungtage in den Reservierungen und die Sprung-Teile der Übersicht. Charterbetrieb umfasst Reservierungen, frei fliegende Flüge („Flug beginnen“), die Betriebsarten Charter, Schulung und Privat und die Reservierungen auf der Übersicht. Beiden gemeinsam: Flugzeuge, Mitglieder, Finanzen, Formulare, Bordbuch, Betriebsart Wartungsflug. Vor dem Ausschalten zeigt eine Bestätigung, was verschwindet. ✔
+- **Flugzeuge:**
+  - Die Übersicht zeigt je Flugzeug Zustand, Stunden, die **nächste Fälligkeit** und Schnellzugriffe (Rechner für Masse und Schwerpunkt, Bordbuch). Eine Schaltfläche „Reservieren“ gibt es nicht, dafür ist der Kalender da.
+  - Die Details sind in **Reitern** (wie die Mitgliederakte): Übersicht, Wartung, Komponenten, Dokumente, Masse und Schwerpunkt, Stammdaten, Kosten. Ein Punkt am Reiter zeigt, wo etwas Aufmerksamkeit braucht.
+  - **Masse und Schwerpunkt ist konfigurierbar** (Leermasse, Leerschwerpunkt, MTOM, Tank, Verbrauch, Schwerpunktgrenzen aus dem AFM, Beladestationen), das **Ändern** braucht `aircraft.edit`. Der **Rechner** ist ein eigenes Werkzeug je Flugzeug und **für alle Piloten** zugänglich; AFP und Flugseite nutzen dieselben Daten.
+  - **Einheiten je Flugzeug:** Masse in kg oder lb, Hebelarm und Länge in Meter oder Zoll, Treibstoff in Liter oder US-Gallonen. Die Software rechnet mit allem, ein Verein kann Flugzeuge mit verschiedenen Einheiten haben. **Gespeichert wird metrisch,** Anzeige und Eingabe folgen den Einheiten des Flugzeugs (Daten, Rechner, AFP, Nachweis-PDF), daneben steht der metrische Gegenwert. Die Gewichte der Personen bleiben vereinsweit in kg. ✔
+  - **Komponenten** (Motor, Propeller ...) laufen nach **Stunden seit Einbau gegen das TBO** und optional nach **Kalenderlimit**, was zuerst eintritt; Aktionen: überholt buchen (Stunden beginnen neu), ausbauen, verschrotten.
+  - **Wartung** nach Flugstunden und/oder Datum; „Erledigt buchen“ schreibt die Historie und rollt die nächste Fälligkeit fort.
+  - **Dokumente** (z. B. Versicherungsnachweis) mit **Ablaufdatum**, Schlagworten und der Eigenschaft **„sperrt Reservierungen, wenn abgelaufen“**. **Es gibt keinen Flug ohne Reservierung** (sonst ist der Verbleib des Flugzeugs unklar und der Flug verboten); die Sperre gilt damit auch für Flüge. Ein Flugzeug mit abgelaufenem Sperr-Dokument oder in Wartung kann weder reserviert noch für einen Sprungtag gewählt werden. ✔
+  - **Flugzeugdokumente sind für alle Mitglieder einsehbar** (Liste und Öffnen der Datei), deshalb werden die **Dateien gespeichert**; Hochladen und neue Version braucht `aircraft.documents.upload` (Chefpilot und Verwaltung), Löschen `aircraft.documents.manage`. **Gegensatz: Mitgliederbezogene Daten (Lizenz, Medical) haben nie eine Datei,** nur die Bestätigung, dass das Original geprüft wurde (Datenschutz). ✔
+  - **Versionierung der Dokumente** ist je Verein **ein- und ausschaltbar** (Vereinseinstellungen > Module). Eingeschaltet bleibt beim Hochladen einer neuen Datei die alte als frühere Version; ausgeschaltet ersetzt die neue die alte. Ausschalten blendet die Versionen aus, löscht sie nicht.
+  - **Eine Fälligkeitsliste** auf der Übersicht fasst Wartung, Komponenten und Dokumente zusammen, das Dringendste zuerst.
+- **Der AFP ist konfigurierbar und ganz abschaltbar,** weil nicht jeder Verein ihn gleich nutzt, manche lieber auf Papier arbeiten oder weniger Transparenz wollen. Einstellbar: AFP ein oder aus, Bestätigung der Vorflugkontrolle mit Unterschrift und Nachweis-PDF, PDF per Mail an den Piloten, Reserve in Minuten. Ausgeschaltet gibt es keine AFP-Oberfläche, **auch nicht für Charter- und Privatflüge** („Flug beginnen“): diese Flüge trägt der Pilot im Bordbuch ein; bei Sprungflügen schaltet das Manifest Boarding und Status. ✔
+- **Schalter, die den ganzen Verein betreffen, gehören nicht zu den persönlichen Einstellungen.** Sie stehen mit den Vereinsdaten in einem eigenen Bereich „Vereinseinstellungen“ (Reiter Vereinsdaten und Module). ✔ (Aufbau: `[Entwurf]`)
+- **Off-block setzt den Flug auf „In der Luft“,** auch im Manifest. Das echte Projekt braucht dafür **Echtzeit-Aktualisierung**: Eingaben des Piloten erscheinen sofort im Manifest. ○ (Der Dummy aktualisiert nur im selben Browser.)
+- **Treibstoff und Endurance beim Start** stehen im AFP klar sichtbar. **Remaining Fuel und Remaining Endurance** sind „–“ (nicht verfügbar), bis sie nach der Landung genau bekannt sind. ✔
+- **Manifest und AFP sind getrennt:** Das Manifest bereitet kein AFP vor, ab dem eingetragenen Piloten gehört es dem Piloten. Das Manifest kann Boarding und die weiteren Stufen schalten, ohne Grund; Eingaben im AFP überschreiben das wieder. Ändert der Pilot im AFP den Piloten, ändert er sich auch am Flug. Im Manifest lässt sich der Pilot für alle noch nicht abgeflogenen Flüge auf einmal wechseln. ✔
+- **Der eingetragene Pilot beginnt den AFP in einem Schritt:** Auf dem Dashboard steht ganz oben „Dein nächster Flug“ mit „AFP starten“, dazu gibt es einen Menüpunkt „Mein Flug“, der nur existiert, solange heute Flüge mit diesem Piloten offen sind. ✔ (Umsetzung: `[Entwurf]`)
+- **Standard-Flugzeit (Cycle Time)** ist eine Manifest-Einstellung und die Vorgabe der geplanten Flugzeit im AFP. ✔
+- Nach Abschluss steht der nächste Flug bereit und lässt sich mit minimalem Aufwand öffnen. ✔
 
 ## 5. Reservierungen und Bordbuch
 
-- Reservierungen wie in V1, plus **mehrere Tage** und **mehrere Reservierungen pro Person**. `[N 06.11.]`
-- Layout wie V1: **Tage untereinander**, der senkrechte Platz wird genutzt. `[N 07.11.]`
-- Eine Pilotenreservierung, die sich mit einem Sprungtag überschneidet, kommt **auf Standby** (wird nicht gesperrt). `[N 07.11.]`
-- Für die spätere Umsetzung: Reservierungen müssen per **Drag and Drop verschiebbar** und **editierbar** sein. `[N 06.11.]` (nicht im Dummy)
-- **Bordbuch:** Icons und Labels aus dem Dummy sind gewünscht, die Liste bleibt schlank wie in V1 (viele Einträge pro Seite), mit Pagination von Anfang an. `[N 07.11.]`
+- Reservierungen wie in V1, plus mehrere Tage und mehrere Reservierungen pro Person; Tage untereinander. ✔
+- Eine Pilotenreservierung, die sich mit einem Sprungtag überschneidet, kommt auf Standby (wird nicht gesperrt). ✔
+- Per Drag and Drop verschiebbar und editierbar. ○
+- Bordbuch: Icons und Labels aus dem Dummy, Liste schlank wie in V1, Pagination von Anfang an. ✔
 
-## 6. Mitglieder, Anträge, Beiträge
+## 6. Mitglieder, Anträge, Formulare, Beiträge
 
-### Anträge und Formulare
-- **Anträge:** Mitgliedschaft neu, ändern (z. B. Kurzzeit auf normal), beenden. Die Formulare sind **konfigurierbar, aber zu einem Zeitpunkt klar festgelegt und nicht nachträglich änderbar**. Eine **Kopie des unterschriebenen Formulars wird als PDF beim Mitglied gespeichert.** `[N 06.11.]`
-- Anträge werden **verschickt und ohne Login ausgefüllt**, sie erzeugen ein **unterschriebenes PDF**. Bei Änderung per Mail oder als **temporärer Link (72 Stunden)** zum Kopieren. `[N 07.11.]`
-- Bei **Änderung** und **Austritt** ist die bisherige Mitgliedschaft **bekannt** und nicht wählbar. Austritt oder Ausschluss kann der **Schriftführer ohne Unterschrift** des Mitglieds durchführen. `[N 07.11.]`
-- Aus jedem Antrag entsteht ein **klares PDF**, das auch **blanko zum Ausfüllen von Hand** geladen werden kann. Wird das händisch ausgefüllte Formular hochgeladen, müssen Änderungen **manuell** durchgeführt werden können. `[N 07.11.]`
-- **Aufnahmeantrag:** braucht vorab keine Daten außer einer E-Mail-Adresse, wenn er per Mail geht; der Rest kommt vom Antragsteller. Das **Blanko-PDF** lässt sich mit nicht verpflichtenden Daten **vorausfüllen**. `[N 07.11.]`
-- Neuaufnahmen gehen **nur per Link oder Papier**. Zuerst wird der **Link erzeugt**, dann wird angeboten, ihn **per Mail zu schicken oder zu kopieren** (zwei getrennte Schritte). `[N 07.11.]`
-- Ein neues Formular **desselben Typs für dasselbe Mitglied bzw. dieselbe Mail ersetzt das vorherige, solange es nicht fertig ist.** Es sollen nur **sinnvolle** Formulare erzeugbar sein (aus der Mitgliederansicht: nur „ändern“ bzw. nur „Austritt“, das Mitglied steht nicht zur Auswahl). `[N 07.11.]`
-- Ein **Änderungsantrag** kann schon beim Erstellen festlegen, **worauf** geändert wird und **ab wann**. `[N 07.11.]`
-- Der **Tab „Anträge“** erzeugt nicht von selbst einen neuen Antrag, erst der Klick auf den Button. `[N 07.11.]`
-- **„Jetzt hier ausfüllen und unterschreiben“** muss abgesichert werden, z. B. mit dem Passwort des betreffenden Mitglieds oder per QR-Code wie im Step-up-Verfahren von V1. `[N 07.11.]` Es gibt **keine Ausweisprüfung** (das war ein Missverständnis). `[N 07.11.]`
-- Die **Definition der Formulare** muss auffindbar sein: direkter, offensichtlicher Zugang (nicht „Mitglieder → Anträge → Formulare → …“). `[N 08.11.]`
-- **Gestaltung und Inhalt gehören zusammen und werden gemeinsam versioniert.** Ein bereits benutztes Formular darf sein Aussehen nicht mehr ändern. `[N 08.11.]`
-- Der Schalter **„Vorbelegt“** muss verständlich sein; ein Feld vom Typ **„Auswahl“** muss zeigen, **was gewählt werden kann** und was geschieht. `[N 08.11.]`
-- **Vereine** sollen **Form und Gestaltung leicht beeinflussen** können: eigenes Logo, Name, Adresse, was wird wo angezeigt; einfach und effektiv. `[N 08.11.]`
-- **Rechnungen** bekommen ebenfalls das Vereinsdesign (möglichst direkt verknüpft). `[N 08.11.]`
-- **Vereinsdaten sind zentral** in der App geregelt. Eine Änderung fragt, ob neue **Formularversionen** erstellt werden sollen. Pro Formular ist wählbar, **welche Vereinsinformationen angezeigt werden**; **Überschreiben** ist möglich. `[N 09.11.]`
-- **Felder und Texte werden kombiniert**; Texte lassen sich frei einfügen. `[N 09.11.]`
-- **Akzentfarbe** frei wählbar, nicht nur Standardfarben (eine anklickbare Farbpalette genügt). `[N 09.11.]`
-- **Alle Formulare** brauchen eine **deutsche und englische Version.** Eine neue Version muss **immer in beiden Sprachen vervollständigt** werden. Für jetzt zeigt der Dummy nur den UI/UX-Weg. `[N 09.11.]`
-- **Formulare werden technisch einheitlich behandelt**, auch der Beförderungsvertrag. `[N 08.11.]`
+### Anträge
+- Antragsarten: Mitgliedschaft neu, ändern (z. B. Kurzzeit auf normal), beenden. ✔
+- Anträge werden verschickt und ohne Login ausgefüllt, erzeugen ein unterschriebenes PDF, das beim Mitglied gespeichert wird. Weg per Mail oder als temporärer Link (72 Stunden). ✔
+- Neuaufnahmen nur per Link oder Papier. Erst wird der Link erzeugt, dann kopiert oder per Mail gesendet (zwei Schritte). ✔
+- Jeder Antrag hat ein klares PDF, auch blanko zum Handausfüllen. Ein hochgeladenes handschriftliches Formular wird manuell übernommen. ✔
+- Das Blanko-PDF eines Aufnahmeantrags lässt sich mit nicht verpflichtenden Daten vorausfüllen; per Mail genügt vorab die Adresse. ✔
+- Bei Änderung und Austritt ist die bisherige Mitgliedschaft bekannt und nicht wählbar. Ein Änderungsantrag legt schon beim Erstellen fest, worauf und ab wann. ✔
+- Austritt oder Ausschluss darf der Schriftführer ohne Unterschrift des Mitglieds durchführen; bei Ausschluss mit Grund. ✔
+- Ein neuer Antrag derselben Art für dieselbe Person oder Adresse ersetzt einen unfertigen. Nur sinnvolle Anträge sind erzeugbar. ✔
+- Der Reiter „Anträge“ erzeugt nicht von selbst einen Antrag, erst der Klick auf den Button. ✔
+- „Jetzt hier ausfüllen und unterschreiben“ (vor Ort am Tablet) wird per Passwort des Mitglieds oder per QR bestätigt, wie das Step-up in V1. Keine Ausweisprüfung. ✔
+- **Aufnehmen:** Standardweg ist der Antrag. Eine Person **ohne Formular** anzulegen (z. B. für Tests) bleibt als dokumentierter Sekundärweg für Ausnahmen. ✔ Der Import heißt „Importieren“. ✔
+
+### Formulare und Vereinsdesign
+- Formulare sind konfigurierbar, aber zu einem Zeitpunkt klar festgelegt und danach nicht änderbar. Gestaltung und Inhalt werden gemeinsam versioniert; eine benutzte Version ändert ihr Aussehen nie. ✔
+- Der Zugang zur Formular-Definition ist direkt und offensichtlich. ✔
+- Das Feld „Vorbelegt“ ist verständlich; ein Auswahlfeld zeigt, was gewählt werden kann und was geschieht. ✔
+- Felder und frei eingefügte Texte werden kombiniert. ✔
+- Formulare werden technisch einheitlich behandelt (auch der Beförderungsvertrag, Rechnung, Zahlungsaufforderung). ✔
+- Vereine beeinflussen Form und Gestaltung leicht: Logo, Name, Adresse, was wo angezeigt wird, frei wählbare Akzentfarbe (Farbpalette genügt). Rechnungen bekommen das Vereinsdesign. ✔
+- Vereinsdaten sind zentral geregelt. Eine Änderung fragt, ob neue Formularversionen erstellt werden. Pro Formular ist wählbar, welche Vereinsinformationen erscheinen; Überschreiben ist möglich. ✔
+- Alle Formulare zweisprachig (Deutsch, Englisch). Eine neue Version muss immer in beiden Sprachen vervollständigt werden. ✔ (für den Dummy: nur der UI/UX-Weg)
 
 ### Beförderungsvertrag (Tandem)
-- Das alte Papierformular „Contract of Carriage“ (Englisch, 2 Seiten) wird **erneuert und digitalisiert.** `[N 09.11.]`
-- **Haftungsausschluss (Waiver) und Gesundheitserklärung müssen ersichtlich sein.** In der Gesundheitserklärung muss **jeder Punkt einzeln bestätigt** werden (zum Beispiel: kein schwerer Unfall, keine ernste Erkrankung, kein mentales Leiden, kein Alkohol in den letzten 12 Stunden). `[N 09.11.]`
+- Das Papierformular „Contract of Carriage“ (Englisch, 2 Seiten) wird erneuert und digitalisiert. ✔
+- Haftungsausschluss und Gesundheitserklärung müssen sichtbar sein; in der Gesundheitserklärung wird jeder Punkt einzeln bestätigt (z. B. kein schwerer Unfall, keine ernste Erkrankung, kein mentales Leiden, kein Alkohol in den letzten 12 Stunden). ✔
 
 ### Mitgliedschaften und Beiträge
-- **Beitragsfälligkeit** in beiden Formen: ein **fester Stichtag** im Jahr (z. B. 1.1., mit anteiligem ersten Beitrag, Beispiel: Eintritt am 1.6. zahlt 50 %, der nächste Beitrag am 1.1.) **oder** individuell **ein Jahr nach der Einschreibung**. Dazu **Rechnung und Zahlungsaufforderung** je Mitgliedsbeitrag. `[N 06.11.]`
-- Es gibt verschiedene **Mitgliedschaften**, verknüpft mit **Verrechnungsmustern** (Stichtag mit Stufen, monatlich oder jährlich, mit Eintrittsdatum), die Mitgliedern zugeordnet werden. `[N 07.11.]` (Wunsch nach einer besseren Bedienung am PC)
-- **Mitglieder-Liste:** zeigt sofort, ob Beiträge **offen oder bezahlt** sind. **Einzahlungen** gehören nicht in die Mitgliederliste, sie laufen über Finanzen. `[N 07.11.]`
-- **Beiträge** als eigene Ansicht, **zusätzlich in Liste und Detailansicht** des Mitglieds eingebunden. `[N 07.11.]`
-- **Stammdaten:** Name in Vor- und Nachname, Adresse in Straße, Hausnummer, PLZ, Stadt, Land; Notfallkontakt in Name und Telefon. **Funktion zuweisen** klarer. `[N 07.11.]`
-- **Selbstbedienung:** Mitglieder ändern persönliche Daten und Passwort selbst und sehen wie in V1 ihre **aktiven Geräte** (mit Abmeldung). Das Badge für öffentliche Geräte gehört **nicht** in die Seitenleiste, sondern wie in V1 **oben rechts**. `[N 07.11.]`
-- **Verlauf** der Mitgliederakte zeigt nur **Formulare, Stammdatenänderungen und Mitgliedschaftsänderungen.** Check-ins und Buchungen auf dem Betriebskonto stehen dort nicht. `[N 08.11.]`
-- **Mitgliedschaft ohne Formular ändern** ist eine **absolute Ausnahme**, erfordert einen **klaren Grund** und eine **erneute Bestätigung.** `[N 08.11.]`
-- Im Verlauf ist bei Änderung, Aufnahme oder Beendigung **entweder das Formular verlinkt oder** (Ausnahme durch den Vorstand) die **Ausnahme mit Kommentar/Grund** klar erkennbar. `[N 08.11.]`
-- **Betriebskonto-Ausnahme beim Wechsel:** Ein Betriebskonto mit Saldo ungleich 0 bleibt beim Wechsel auf eine Mitgliedschaft ohne Konto bestehen (Beispiel: 500 € Guthaben). Das war Andreas’ Vorschlag („Ist das technisch lösbar?“); im Dummy umgesetzt. `[N, im Dummy umgesetzt 08.11.]`
-- **Aufnehmen:** Der **Standardweg ist ein Formular** (Antrag). Eine **Person ohne Formular anzulegen** (z. B. nur für Tests) muss möglich sein, **klar dokumentiert** und als **Sekundärweg für Ausnahmen** gedacht. Der Import heißt nur „Importieren“. `[N 09.11.]`
-- **Funktionen und Rechte:** Alle Funktionen sind nur **vorbefüllt**; sie lassen sich **umbenennen, löschen und neu anlegen.** `[N 09.11.]`
-- **Mitgliedschaft für den Tandem-Check-in:** Es soll **konfigurierbar** sein, **welche Mitgliedschaft** eine Person beim Tandem-Check-in bekommt (auswählbar), nicht starr an einer Mitgliedschaft hängen. Der Check-in selbst ist noch nicht gebaut. `[N 09.11.]`
-- Andreas hat die **Einführung „1. Beitragsmuster → 2. Mitgliedschaft → 3. Mitglieder“ nicht verstanden**; sie muss verständlich sein. `[N 09.11.]`
+- Beitragsfälligkeit in beiden Formen: fester Stichtag (z. B. 1.1., anteiliger erster Beitrag, z. B. Eintritt 1.6. zahlt 50 %) oder individuell ein Jahr nach Eintritt. Dazu Rechnung und Zahlungsaufforderung je Beitrag. ✔
+- Mitgliedschaften sind mit Beitragsmustern verknüpft (Stichtag mit Stufen, monatlich oder jährlich, mit Eintrittsdatum). ✔
+- **Tandem-Check-in:** Welche Mitgliedschaft Gäste beim Check-in bekommen, ist auswählbar, nicht starr. ✔ (Auswahl); ○ (Vergabe beim Check-in)
+- Die Einrichtung der Mitgliedschaften muss ohne Erklärung verständlich sein. ✔
+- Mitgliederliste zeigt sofort, ob Beiträge offen oder bezahlt sind. Einzahlungen gehören nicht in die Liste, sie laufen über Finanzen. ✔
+- Beiträge als eigene Ansicht und zusätzlich in Liste und Detail des Mitglieds. ✔
+- Stammdaten: Vor- und Nachname getrennt, Adresse in Straße, Hausnummer, PLZ, Stadt, Land; Notfallkontakt in Name und Telefon. ✔
+- Selbstbedienung: Mitglieder ändern Daten und Passwort selbst und sehen ihre aktiven Geräte (mit Abmeldung). Das Badge für öffentliche Geräte steht oben rechts, nicht in der Seitenleiste. ✔
+- Der Verlauf der Mitgliederakte zeigt nur Formulare, Stammdaten- und Mitgliedschaftsänderungen, keine Check-ins oder Kontobuchungen. ✔
+- **Mitgliedschaft ohne Formular ändern** ist eine absolute Ausnahme: klarer Grund, erneute Bestätigung, im Verlauf mit Grund sichtbar (sonst ist das Formular verlinkt). ✔
+- Ein Betriebskonto mit Saldo ungleich 0 bleibt beim Wechsel auf eine Mitgliedschaft ohne Konto bestehen. ✔
+- **Funktionen und Rechte:** Alle Funktionen sind nur vorbefüllt; umbenennen, löschen, neu anlegen. ✔ Funktion zuweisen klarer. ✔
 
 ## 7. Finanzen
 
-- **Finanzen:** Bankbuchungen und Belege stehen im Vordergrund. **Mitglieder-Betriebskonten** sollen mehr hervortreten: **Einzahlung bar buchen** und **Überweisung einem Betriebskonto zuweisen.** `[N 06.11.]`
-- Später erarbeitet ein **KI-Agent** die Zuordnungen vor, Andreas bestätigt nur. `[N 06.11.]`
-- **„Flug verrechnen“ bleibt:** Ein Flug wird nie sofort gebucht, es braucht **immer die Bestätigung des Kassiers**. `[N 06.11.]`
-- **Lande- und Anfluggebühren** wie in V1: Plätze schicken Monats- oder unregelmäßige **Sammelrechnungen**, die sich nicht immer einem Flug zuordnen lassen. Ein **LLM** soll später diese Rechnungen und **Tank-Lieferscheine** gegen die **Bordbuch-Einträge** prüfen. `[N 06.11.]`
-- **Betriebskonto je Mitgliedschaftsart:** Bei jeder Mitgliedschaft wird gewählt, ob ein Konto geführt wird. Mitglieder ohne Konto werden nicht gelistet und nicht verfolgt. `[N 06.11.]` Die V1-Filter dienen als Vorbild.
-- **Mein Konto** zeigt Mitgliedern **nur den eigenen Kontostand**; alle sieht nur, wer die Berechtigung hat (z. B. Kassier). `[N 06.11.]`
-- **Bar-Einzahlung:** das **Datum ist wählbar**, weil Eingänge wegen Personalkapazität erst Tage später gebucht werden können. `[N 09.11.]`
-- In der Mitgliederakte ist **„Bar einzahlen“ dezent**, die **Überweisung** wird dort nur bei einer **Vermutung** (z. B. gleicher Name) zugewiesen, dazu ein **Link zu Finanzen.** `[N 09.11.]`
-- **SEPA-Lastschrift:** denkbar, aber unklar (siehe [04](04-offen-und-ideen.md)). `[N 06.11.]`
+- Im Vordergrund: Bankbuchungen und Belege. Mitglieder-Betriebskonten treten stärker hervor: Einzahlung bar buchen, Überweisung einem Betriebskonto zuweisen. ✔
+- **Eine Bankzeile kann aufgeteilt werden** (Teilbuchungen): Eine Überweisung deckt oft mehrere Dinge (Tandem-Ticket + Spende, Flugkosten auf das Betriebskonto + Mitgliedsbeitrag). Jeder **Teil hat Betrag und Ziel** (Betriebskonto, Kostenstellen mit Prozenten, Gutschein/Ticket); **die Teile müssen die Zeile genau ausgleichen**, sonst ist das Buchen gesperrt. Gutschein- oder Ticket-Teile übernehmen deren Betrag und markieren sie als bezahlt, Konto-Teile gutschreiben ihren Anteil. Das Aufteilen auf mehrere Kostenstellen nach Prozent bleibt eine Ebene tiefer. ✔
+- **Sammelabbuchung (SEPA):** Eine Abbuchung kann **mehrere Rechnungen** begleichen (2.000 € für zwei Rechnungen zu je 1.000 €). Alle Belege hängen an der Zeile, die Zeile zeigt „Belege 1.000 € von 2.000 €“, wenn die Summe nicht stimmt. „Nach Belegen aufteilen“ legt je Beleg einen Teil mit dessen Betrag an, jeder Teil bekommt sein eigenes Ziel. ✔
+- **Buchung ohne Beleg ist eine Ausnahme, nie still:** „Kein Beleg“ verlangt einen **Grund** (dieselbe Liste wie im Bordbuch) und die Bestätigung, dass es keinen gibt; Person und Tag stehen an der Buchung. Die Buchung bleibt in „Ohne Beleg“ sichtbar, bis ein Beleg nachgereicht wird (dann endet die Ausnahme von selbst). `[Vorschlag]` Eigenbeleg als Dokument aus der Ausnahme erzeugen, Auswertung der Ausnahmen für den Rechnungsprüfer. ○
+- **Ein Beleg hat immer eine Datei und Daten:** Die Datei ist die Rechnung oder der Lieferschein des Lieferanten, die Daten (**Lieferant, Belegnummer, Datum, Betrag**) werden zusätzlich digital geführt und sind unabhängig von der Datei durchsuchbar und buchbar. Deshalb heißt es **„Beleg erstellen“** (nicht „hochladen“): Datei wählen und die Daten prüfen (im echten Projekt liest die KI sie aus der Datei vor). ✔
+- **Buchungen: die Normalansicht zeigt alle Buchungen aller Konten**, nicht nur die offenen. Jede Zeile zeigt Datum, Text, Rechnung(en), Kostenstelle und Kostenart, Betrag und Status; was noch nicht endgültig zugeordnet ist (offen, Beleg fehlt, Belege weichen ab), hat einen farbigen Rand und den Knopf „Bestätigen“ (bei Vorschlag) oder „Zuordnen“. **„Zu bearbeiten“ ist die Schnellansicht** genau dieser Zeilen. Filter: Konto, Kostenstelle, Kostenart, Datum, Betrag, Freitext (auch Lieferant und Rechnungsnummer). ✔
+- **Auch Gebuchtes lässt sich ändern, solange der Zeitraum offen ist:** Kostenstelle, Kostenart und Buchungstext (der Bank-Text bleibt erhalten) sowie die Rechnungen an der Buchung. Jede Änderung steht mit Person und Tag im Verlauf der Buchung (Recht `billing.bank.manage`). Zahlungen auf Betriebskonten, Gutscheine und Tickets werden nicht hier, sondern über Storno korrigiert. ✔
+- **Rechnungen haben eine eigene Ansicht,** weil sie vor der Abbuchung eintreffen können (Rechnung per Mail, SEPA eine Woche später): „Abbuchung offen“ zeigt sie ohne Buchung, eine Kostenstelle lässt sich schon an der Rechnung vermerken. Filter nach Lieferant, Betrag, Datum, Kostenstelle, Kostenart. **Auswertung nach Kostenstelle und Jahr** (zum Beispiel Wartungsrechnungen der letzten drei Jahre) und **CSV-Export**; von der Summe führt ein Klick zu den Rechnungen dahinter. Von jeder Buchung geht es zur Rechnung und von jeder Rechnung zur Buchung. ✔
+- **Geldkonten:** Der Verein führt mehrere Konten (Bankkonto, Kassa, zweites Barkonto, Sparbuch). Die Übersicht zeigt Stand je Konto und gesamt, je Konto die zu bearbeitenden Buchungen und einen Sprung in dessen Buchungen. Konten sind anlegbar (Name, Art, Hinweis, Stand heute), umbenennbar und archivierbar (nur bei Stand 0). Geld zwischen Konten läuft über eine **Umbuchung** (zwei Buchungen, sofort gebucht); die Kassa ist ein Konto wie jedes andere. ✔
+- **Freigabe eines Zeitraums (Monat):** Solange ein Monat offen ist, sind seine Buchungen änderbar. Mit der **finalen Freigabe** (Recht `billing.periods.release`, sensibel) werden Buchungen und Rechnungen **gesperrt**. Voraussetzung: jede Buchung zugeordnet und mit Rechnung oder Ausnahme gedeckt. Eine Freigabe lässt sich mit demselben Recht aufheben; die Aufhebung steht mit Person bei den Buchungen. Neue Buchungen mit Datum in einem freigegebenen Monat landen im ersten offenen. ✔
+- **Auslage (bar ausgelegt):** Mitglieder reichen Bar-Auslagen **ganz leicht selbst ein** (Übersicht und Mein Konto, „Auslage einreichen“): was war es (Treibstoff oder etwas anderes), Beleg scannen oder hochladen (wird gelesen: Lieferant, Datum, Summe, bei Treibstoff Liter und Literpreis), kurze Beschreibung, bei Treibstoff das Flugzeug. **Jede Auslage braucht die Prüfung des Kassiers, auch Treibstoff** (privat vorgestreckt im Bordbuch oder AFP wird ebenso zum Antrag). Erst nach der Prüfung wird sie **auf eine Kostenstelle gebucht und dem Betriebskonto gutgeschrieben**, mit **Link zum Beleg** im Konto; vorher ändert sich der Kontostand nicht. Der Kassier prüft in **Finanzen > Auslagen** (wie „Flüge verrechnen“, mit Aufgabe in seiner Übersicht): Zahlen korrigieren, Kostenstelle und Kostenart wählen, **Gutschreiben** oder **Ablehnen mit Grund**; das Mitglied sieht den Stand unter „Meine Auslagen“. Der Kassier selbst kann eine Auslage direkt erfassen (Betriebskonto > „Auslage erfassen“, an einer Rechnung „Privat bezahlt (Auslage)“). ✔
+- **Tankbelege im Bordbuch und im AFP:** Beim Eintrag „Getankt“ wird der Beleg gleich erfasst: **Datei wählen oder Foto** (am Handy öffnet das die Kamera) oder **mit dem Handy scannen** (der Computer zeigt einen QR-Code, das Handy öffnet im Browser einen Scanner, der fertige Scan wird direkt angehängt). Ein **Sprachmodell liest** Lieferant, Datum, Belegnummer, **Summe, Liter und Literpreis**; die Person prüft nur. **Summe und Literpreis sind bei Treibstoff immer Pflicht**, daraus entsteht der **durchschnittliche Treibstoffpreis** (gewichtet nach Litern, in Rechnungen für die Auswahl und in Ergebnis für zwölf Monate). Weichen die Liter im Beleg von denen im Eintrag ab, muss eine Zahl übernommen werden. „Wer hat bezahlt?“: **Lieferschein** (der Verein zahlt, der Beleg wartet auf seine Abbuchung) oder **Privat vorgestreckt** (wird zur Auslage zur Prüfung; **Standard ist der angemeldete Nutzer**, änderbar). Die Art der Bezahlung muss gewählt werden; ohne Wahl lässt sich nicht speichern. Ohne Beleg gilt weiter der Grund. Ein Beleg lässt sich nachreichen. ✔
+- **Treibstoff ändert sich nur im Zuge eines Bordbuch-Eintrags oder eines AFP** (aus dem ein Bordbuch-Eintrag wird); es gibt keinen eigenen Treibstoff-Bereich und kein Tank-Protokoll. Der **Tankinhalt** ist der Stand, den der letzte Eintrag hinterlässt. Ohne Beleg gibt es zwei getrennte Wege: **„Beleg kommt später“** (der Eintrag geht weiter, der Beleg wird über „Beleg fehlt“ nachgereicht) und **„Kein Beleg vorhanden“** (mit Grund, endgültig). Im Eintrag bzw. AFP: **Uplift** (getankt, **vor oder nach** dem Flug), **De-fueling** (abgetankt, mit **Pflichtkommentar**) und, nur in Ausnahmefällen, **Inhalt korrigieren** (Grund: Peilstab oder Tankanzeige, Fehler bei früherer Eingabe, Sonstiges). Im AFP wird der Inhalt nicht mehr frei getippt; Uplift und De-fueling zählen sofort in die Endurance. ✔
+- **Uplift in Eile:** Ein Uplift braucht **nur die Liter**; der Flug geht damit weiter. Beleg, Preis und Bezahlung (Lieferschein oder privat vorgestreckt) werden **über das bestehende „Beleg fehlt“ im Bordbuch nachgereicht**, es gibt keinen anderen Weg. Der **Pilot wird vom System darauf hingewiesen** (auffälliger Hinweis mit Knopf „Zum Bordbuch“ in seiner Übersicht und im Bordbuch; **im AFP nur eine dezente Zeile**, weil der Beleg aus Zeitmangel gern später kommt), solange der Beleg zu seinen Uplifts fehlt. Weicht die gelesene Liter-Zahl von der eingegebenen ab, wird deutlich gefragt, ob **wirklich X Liter getankt** wurden: „X L übernehmen“ (Eintrag und Tankinhalt werden nachgezogen) oder „Y L stimmt“ (falls die KI falsch gelesen hat). ✔
+- **Öl wird nur gezählt:** Für Öl gibt es keinen Beleg und keinen Lieferschein, nur die Menge. ✔
+- **Zeiten im AFP:** Block-off und Take-off sowie Landing und Block-on **dürfen dieselbe Zeit** haben; zwischen Take-off und Landing muss **mindestens eine Minute** liegen. ✔
+- Ein KI-Agent erarbeitet die Zuordnungen später vor, der Mensch bestätigt nur. ○
+- **„Flug verrechnen“ bleibt:** Ein Flug wird nie sofort gebucht, es braucht immer die Bestätigung des Kassiers. ✔
+- Lande- und Anfluggebühren: Plätze schicken Monats- oder Sammelrechnungen, die sich nicht immer einem Flug zuordnen lassen. Ein LLM prüft später diese Rechnungen und Tank-Lieferscheine gegen die Bordbuch-Einträge. ○
+- Betriebskonto je Mitgliedschaftsart: Bei jeder Mitgliedschaft wird gewählt, ob ein Konto geführt wird. Mitglieder ohne Konto werden nicht gelistet und nicht verfolgt (V1-Filter als Vorbild). ✔
+- Mein Konto zeigt Mitgliedern nur den eigenen Kontostand; alle sieht nur, wer die Berechtigung hat (z. B. Kassier). ✔
+- Bar-Einzahlung mit wählbarem Datum (Buchung kann Tage später erfolgen). ✔
+- In der Mitgliederakte ist „Bar einzahlen“ dezent; eine Überweisung wird dort nur bei einer Vermutung (z. B. gleicher Name) zugewiesen; dazu ein Link zu Finanzen. ✔
+- SEPA-Lastschrift: denkbar, nicht entschieden ([04](04-offen-und-ideen.md)).
 
 ## 8. Rechte, Anmeldung, Geräte
 
-- **Rechtesystem von V1 übernehmen**, die Logik **genau so**. Pilot soll deutlich mehr sehen. `[N 06.11.]`
-- **QR-Code-Anmeldung** und der Mechanismus **vertrauenswürdiger/nicht vertrauenswürdiger Geräte** werden übernommen. `[N 07.11.]`
+- Das Rechtesystem von V1 wird übernommen, die Logik genau so; der Pilot soll deutlich mehr sehen.
+- QR-Anmeldung und das Modell vertrauenswürdiger/öffentlicher Geräte werden übernommen. ✔
 
 ## 9. Shop, Mails, Tickets
 
-- **Manifest sowie Gutscheine und Tickets** werden überarbeitet. `[N 06.11.]`
-- **Kommunikation** passt grundsätzlich, soll aber **enger mit dem Store-Management verwoben** sein; die **Webshop-Konfiguration** muss verständlicher werden. `[N 06.11.]`
+- Manifest sowie Gutscheine und Tickets werden überarbeitet.
+- Kommunikation bleibt im Grundsatz, wird aber enger mit dem Store-Management verbunden; die Webshop-Konfiguration muss verständlicher werden. (Aufbau im Dummy: `[Entwurf]`)
+- **Tickets und Voucher** (`[Entwurf]` für den Aufbau): drei Reiter, **Gutscheine**, **Tickets** und **Arten und Preise**.
+  - **Gutscheine und Tickets bleiben getrennt.** Ein Gutschein einzulösen bucht den Gast im Manifest, erzeugt aber kein Ticket. Tickets sind die für einen Tag gekauften Tandem-Buchungen.
+  - **Katalog:** Welche Gutscheine und Tickets es gibt und was sie kosten, wird hier verwaltet (Name deutsch und englisch, Preis, Gültigkeit der Gutscheine, Code-Präfix, PDF-Vorlage, verfügbar). **Preise sind versioniert wie bei den Betriebsarten:** nie rückwirkend, alte Preise bleiben archiviert, schon Verkauftes behält seinen Preis. Eine Art, die schon verkauft wurde, ist **nicht löschbar**, nur ausschaltbar. Die Shop-Texte dazu stehen weiter unter Shop und Mails.
+  - **Die Zeile zeigt nur den nächsten Schritt** (z. B. „Termin buchen“, „Zahlung erfassen“) immer an derselben Stelle; **alle Aktionen stehen in der Detailansicht:** Termin buchen oder ändern, Zahlung erfassen, **Gültigkeit verlängern (mit Grund)**, PDF senden, Stornieren, Storno zurücknehmen, bei Tickets Umbuchen und Erstattung erfassen.
+  - **Verlauf und Kommentare** in einer Liste je Gutschein und Ticket (Ereignisse des Systems und Kommentare des Teams).
+  - **Suche und Filter:** ein Suchfeld für Code, Name und E-Mail, dazu Status, Art, Zahlung und Zeitraum, Kurzfilter mit Zahlen (z. B. „Laufen bald ab“, „Zahlung offen“), Export als CSV (`vouchers.export`).
+  - **Ein Dialog zum Ausstellen** deckt auch den Gutschein aus dem Altsystem ab (eigener Code und Kaufdatum, keine Buchung in Finanzen, die Zahlung lief dort), den V1 in einem zweiten, fast gleichen Dialog hatte.
+  - **Jede Zahlung ist in Finanzen gebucht.** *Bar:* Datum (nicht in der Zukunft, vorbelegt mit heute) und Bestätigung mit dem Betrag, wie bei der Bar-Einzahlung auf Mitgliedskonten; es entsteht eine Kassa-Buchung, die Kassa steigt. *Überweisung:* sie muss in Finanzen > Bank schon als Zeile da sein und wird dem Gutschein oder Ticket **zugewiesen** (im Dialog direkt, oder in der Bank über „Gutschein / Ticket“, auch als bestätigter Vorschlag); die Zeile ist dann gebucht, der Gutschein bezahlt. *Offen:* beim Ausstellen möglich (Überweisung erwartet), die Zuweisung folgt später. **Online ist beim Ausstellen von Hand keine Zahlungsart** (online bezahlt kommt aus dem Shop). Das Geld ist bis zum Flug eine Verbindlichkeit. **Erstattungen** (Tickets) laufen gleich in Gegenrichtung: Bar ausgezahlt oder eine ausgehende Überweisung zuweisen. ✔
+  - **Namen immer getrennt** in Vorname und Nachname (Käufer, Gast). **Notiz heißt Kommentar** und ist der erste Kommentar im Verlauf. Die Gutschein-Liste zeigt **Termin und Zeitfenster** (oder den Wunschtermin) direkt in der Zeile. ✔
+  - Der Gutschein ist eine **Verbindlichkeit bis zum Flug**; der Ertrag wird erst beim Sprung verbucht (die Detailansicht sagt, was gilt).
 
-## 10. Pauschal akzeptierte Vorschläge `[akzeptiert]`
+## 10. Richtung angenommen `[Richtung]`
 
-Andreas hat die Vorschläge in `archiv/inventur-recherche-vorschlaege.md` (Abschnitte 1 und 3) mit „Der Rest ist alles super und gute Vorschläge“ angenommen, ausgenommen die Punkte, die er einzeln kommentiert hat (Flug verrechnen, Landegebühren, die vier Entscheidungen). Die Richtung gilt, **Details sind nicht entschieden**:
+Die Richtung gilt, die Details sind nicht ausgearbeitet:
 
-- **Manifest:** Anwesenheit statt Buchung; Preisprofile mit Ausnahmen pro Mitglied und Sprungkarten; Masse und Schwerpunkt je Flug aus Gewichten und Tankmenge; **Warnen statt blockieren** bei abgelaufenen Dokumenten oder Überladung; Boarding-Anzeige für einen zweiten Bildschirm und **Offline-Betrieb** der Tablets; ein Ablauf (Plan, Aktiv, Abschluss) statt vieler Dialoge, Mails über Regeln.
-- **Tickets und Voucher:** ein Begriff mit Lebenslauf (gekauft, reserviert, eingelöst oder geflogen, danach No-Show, Storno, Umbuchung, Erstattung); Gutschein als Verbindlichkeit bis zum Flug, Ertrag erst beim Sprung; Ablauf-Erinnerungen und Verlängerung als bewusste Aktion mit Grund; Aktionen immer an derselben Stelle der Zeile.
-- **Finanzen:** unveränderliches Hauptbuch, nur Storno (ein Umkehr-Mechanismus statt zwei); zwei Sichten (Geldfluss mit Einnahmen-Ausgaben-Rechnung für das Vereinsgesetz, Ergebnis je Sparte nach Flugminuten); Jahresabschluss-Export und Rolle „Rechnungsprüfer“; Belegnummer je Buchung; Bank per Kontoauszugsdatei zuerst; lernende Zuordnungsregeln; einmaliger Import der V1-Kontostände zur Migration.
-- **Übernehmen:** Reservierung, Rechte-Konzept, Kiosk-Registrierung, Bordbuch-Import nur einmalig zur Migration, Lizenzen nur als Daten.
+- **Manifest:** Anwesenheit statt Buchung; Preisprofile mit Ausnahmen pro Mitglied und Sprungkarten; Masse und Schwerpunkt aus Gewichten und Tankmenge; Warnen statt blockieren bei abgelaufenen Dokumenten oder Überladung; Boarding-Anzeige für einen zweiten Bildschirm; Offline-Betrieb der Tablets; ein Ablauf (Plan, Aktiv, Abschluss) statt vieler Dialoge; Mails über Regeln.
+- **Tickets und Voucher:** ein Begriff mit Lebenslauf (gekauft, reserviert, eingelöst oder geflogen, danach No-Show, Storno, Umbuchung, Erstattung); Gutschein als Verbindlichkeit bis zum Flug, Ertrag erst beim Sprung; Ablauf-Erinnerungen, Verlängerung als bewusste Aktion mit Grund; Aktionen immer an derselben Stelle der Zeile.
+- **Finanzen:** unveränderliches Hauptbuch, nur Storno (ein Umkehr-Mechanismus statt zwei); zwei Sichten (Geldfluss mit Einnahmen-Ausgaben-Rechnung, Ergebnis je Sparte nach Flugminuten); Jahresabschluss-Export und Rolle „Rechnungsprüfer“; Belegnummer je Buchung; Bank zuerst per Kontoauszugsdatei; lernende Zuordnungsregeln; einmaliger Import der V1-Kontostände.
+- **Übernehmen aus V1:** Reservierung, Rechte-Konzept, Kiosk-Registrierung; Bordbuch-Import nur einmalig zur Migration; Lizenzen nur als Daten.

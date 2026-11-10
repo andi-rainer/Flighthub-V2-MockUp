@@ -1,55 +1,81 @@
-# 04 · Offene Fragen, Ideen und Vorschläge
+# 04 · Offen, Vorschläge, Recherche
 
-Stand: 09.11.2026. Lies zuerst die Statuslegende in [README.md](README.md).
+**Nichts hier ist beschlossen.** Beschlossenes steht in [02](02-v2-beschluesse.md).
 
-**Nichts in diesem Dokument ist beschlossen.** Wer baut oder plant, darf es nicht als Vorgabe behandeln. Beschlossenes steht in [02](02-v2-beschluesse.md).
+## 1. Offene Abläufe und Entscheidungen `[Offen]`
 
-- `[Offen]` Frage, die Andreas (oder ein Fachmann) beantworten muss.
-- `[Vorschlag]` Idee oder Entwurf von Claude, von Andreas nicht entschieden.
-- `[Recherche]` Fund aus dem Internet, nicht geprüft; vor einer Entscheidung gegenprüfen.
+**Workflows, die noch zu überlegen sind**
+1. **Tandem-Buchungssystem (Slots):** Der Dummy zeigt `[Entwurf]` Zeitfenster mit Kapazität je Tag; ohne Fenster ist der Tag ein reiner Sportspringer-Tag. Zu klären: feste Slots wie in V1, Zeitfenster oder nur ein Tageskontingent; was der Shop zeigt; ob eine Buchung einem Flug nur vorläufig zugewiesen wird.
+2. **Tandem-Check-in, Rest:** Absicherung des Geräts (Kopplung statt offenem Link), Gäste ohne Buchung, Vergabe der Mitgliedschaft je Gästeart (Tandem, Schnupperflug o. Ä.).
+3. **Tandem-Gast, der nicht erscheint:** Gilt für ihn dasselbe wie für den Sportspringer mit bezahltem Platz, oder bleibt es bei der V1-Regel (Gutschein „nicht erschienen“)?
+4. **Bezahlung und Abschluss am Tag:** Ablauf von Zahlungsarten bis Buchung auf Betriebskonto und Kassa; Aufbau des Abschlussdialogs.
+5. **Testpersonen** (ohne Formular angelegt): von Beiträgen ausgenommen? Später sperr- oder löschbar?
+6. **Wirtschaftlichkeit je Sparte:** Wie Fixkosten auf Sparten und Flugzeuge umgelegt werden und woraus der „angemessene Charter-Satz“ berechnet wird.
+7. **Drag and Drop** bei Reservierungen: Bedienung und Konfliktfälle.
+8. **Mobile Ansicht:** zwei Versionen (Mobil, Laptop/Tablet) sind denkbar; ob und wann, offen.
 
-## 1. Offene Fragen `[Offen]`
+**Entscheidungen**
+9. **Technik der echten V2** (Sprache, Framework, Datenbank, Hosting je Verein): nicht entschieden.
+10. **SEPA-Lastschrift für Beiträge:** denkbar, Folgen jenseits der Programmierung unklar (Abschnitt 4). Bis dahin: Rechnung mit Überweisung und Zahlungsaufforderung.
+11. **Aufbewahrungsfristen und Rechnungslegung:** Quellen widersprechen sich (sieben oder zehn Jahre); mit dem Steuerberater klären, auch was der Verein nach § 21 Vereinsgesetz liefern muss.
+12. **Zweisprachigkeit** der übrigen Texte: Mitgliedschaftsnamen und eigene Auswahllisten sind einsprachig.
+13. **Entwürfe bestätigen oder verwerfen:** alle `[Entwurf]`-Punkte in [03, Abschnitt 4](03-klickdummy.md).
+14. **Details der `[Richtung]`-Punkte** ([02, Abschnitt 10](02-v2-beschluesse.md)): Preisprofile, Sprungkarten, Offline-Betrieb, Boarding-Anzeige, Rechnungsprüfer, Jahresabschluss-Export, Belegnummer, Bankanbindung, lernende Regeln.
+15. **Finanzen, Rest:** (a) Eine Bankzeile, die eine Umbuchung zwischen Konten ist (Bankomat-Behebung, Einzahlung aufs Sparbuch), soll beim Zuordnen die Gegenbuchung erzeugen oder mit der Zeile des anderen Kontos verknüpft werden, statt doppelt gebucht zu werden; der Dummy kennt die Umbuchung nur über Geldkonten. (b) Mitgliedsbeitrags-Rechnungen sind noch kein Ziel einer Bankzeile. (c) Freigabe ist je Monat; ob zusätzlich eine Jahresfreigabe nötig ist, und ob ein Monat nur in Reihenfolge freigegeben werden darf, ist offen. (d) Ob das Aufheben einer Freigabe eine zweite Person braucht (Vier-Augen-Prinzip). (e) Eine falsch erfasste Auslage lässt sich noch nicht rückgängig machen (Gegenbuchung auf Kostenstelle und Betriebskonto zusammen). (f) Tankbelege bei einem Flug, den ein anderes Mitglied als der Pilot bezahlt hat: der Zahler ist wählbar, die Prüfung des Kassiers fängt Fehler ab. (j) Auslagen: eine Rückfrage an das Mitglied vor Ablehnung, Benachrichtigung bei Gutschrift oder Ablehnung, Sammelprüfung mehrerer Auslagen. (i) Ein Uplift nach der Freigabe eines AFP ändert die Zahlen des unterschriebenen AFP nicht; zu klären, ob ein neuer AFP nötig ist. (g) Der Scanner im Browser des Handys braucht eine kurzlebige, einmalige Adresse je QR-Code; Aufbewahrung der Scans und Datenschutz klären.
 
-1. **Technik der echten V2** (Sprache, Framework, Datenbank, Hosting je Verein). Andreas entscheidet selbst; bisher steht nichts fest.
-2. **SEPA-Lastschrift für Beiträge.** Andreas hält sie für denkbar, kennt aber die Folgen außer der Programmierung nicht. Eckpunkte siehe Abschnitt 4. Bis zur Entscheidung gilt nur: Rechnung mit Überweisung und Zahlungsaufforderung.
-3. **Aufbewahrungsfristen und Rechnungslegung.** Quellen widersprechen sich (sieben oder zehn Jahre). Mit dem Steuerberater klären, auch was der Verein nach dem Vereinsgesetz (§ 21) liefern muss.
-4. **Wirtschaftlichkeit je Sparte:** Wie Fixkosten auf Sparten und Flugzeuge umgelegt werden und woraus der „angemessene Charter-Satz“ berechnet wird, ist nicht festgelegt. Andreas will das Ergebnis, die Methode fehlt.
-5. **Testpersonen** (ohne Formular angelegt): Sollen sie von Beiträgen ausgenommen sein, und lassen sie sich später sperren oder löschen?
-6. **Tandem-Check-in-Einstellung:** Wo sie später steht und ob die Mitgliedschaft je Art von Gast (Tandem, Schnupperflug o. Ä.) verschieden sein kann. Andreas wünscht eine Auswahl, mehr ist nicht festgelegt.
-7. **Rechte statt Namen:** Verhalten (z. B. Sprungtag-Liste = Funktion Sportspringer) hängt im Dummy am Code der Funktion. Ob in V2 alles ausschließlich an Rechten hängen soll, damit das Löschen einer Funktion nichts bricht, ist nicht entschieden.
-8. **Zweisprachigkeit der restlichen Texte:** Mitgliedschaftsnamen und eigene Auswahllisten sind einsprachig; ob sie zweisprachig werden müssen, ist offen. Andreas hat nur Formulare genannt.
-9. **Zu bestätigen:** Alle Punkte aus [03, Abschnitt 4](03-klickdummy.md) (Claude-Entwürfe, Marke `[C]`) sind nicht bestätigt, vor allem AFP-Erinnerungen und -Prüfaufgaben, das Dashboard je Rolle, die Reise des Kunden im Shop und der Aufbau der Fälligkeitsliste am Flugzeug.
-10. **Mobile Ansicht:** Zwei Versionen (Mobil, Laptop/Tablet) sind für später denkbar `[N 06.11.]`; ob und wann, ist offen.
-11. **Details der pauschal akzeptierten Vorschläge** (siehe [02, Abschnitt 10](02-v2-beschluesse.md)): Preisprofile, Sprungkarten, Offline-Betrieb, Boarding-Anzeige, Rechnungsprüfer-Rolle, Jahresabschluss-Export, Belegnummer, Bankanbindung, lernende Regeln. Sie sind angenommen, aber nicht ausgearbeitet.
+## 2. Vorschläge `[Vorschlag]`
 
-## 2. Vorschläge und Entwürfe von Claude `[Vorschlag]`
+- **Weitere Schalter in den Modulen** (nichts davon ist gebaut):
+  - *Skydive, darunter:* **Tandem** (Shop, Tickets und Voucher, Check-in-Kiosk) und **Sportspringer** getrennt schaltbar, für Vereine mit nur einem von beiden.
+  - *Charterbetrieb, darunter:* **Schulung** (Flugschüler, Instruktor, Ausbildungsnachweis), **Standby-Liste** der Reservierungen, längste Reservierungsdauer und Vorlaufzeit.
+  - *Finanzen:* Beitragslauf, Bankanbindung mit KI-Zuordnung, Belege; Kostenstellen je Betrieb vorbelegen.
+  - *Mitglieder:* Online-Anträge (öffentliche Antragsseite) ein/aus.
+  - *Mails:* Hauptschalter und Erinnerungen, Mails ohne Skydive-Bezug (Kontoauszug, AFP, Reservierung) gehören dann nicht mehr unter „Shop“.
+  - *Sicherheit:* Fristen für nicht vertrauenswürdige Geräte (V1 fest 30 Minuten und 3 Stunden), QR-Anmeldung ein/aus.
+  - *Sprache:* Englisch ein/aus.
+- **Ausgeschaltete Module, offene Punkte `[Offen]`:** Funktionen und Rechte des Bereichs (z. B. Tandem-Master, Manifest-Rechte) sollten in der Funktionsverwaltung und in den Auswahllisten verschwinden; Mails ohne Skydive-Bezug brauchen einen anderen Ort als „Shop und Mails“; ob offene Sprungtage oder Reservierungen das Ausschalten verhindern oder nur warnen.
+- **Tickets und Voucher, weiter:** Erinnerungsmail vor Ablauf eines Gutscheins (mit Vorwarnzeit, als Mail-Regel); Preisversion mit Startdatum in der Zukunft auch im Katalog; abweichende Gültigkeit für Aktionen; Überweisungen mit abweichendem Betrag (Teilzahlung, Sammelüberweisung für mehrere Gutscheine; im Dummy passen nur gleiche Beträge), Erstattung auch für Gutscheine, Online-Zahlungen aus dem Shop der Stripe-Auszahlung zuordnen; Sprungkarten als eigene Art; eine Erinnerung an Gutscheine mit Wunschtermin, wenn der Tag näher rückt.
+- **Flugzeuge, weiter:** Warnschwellen je Verein (V1 fest: Dokumente 45 und 5 Tage, Komponenten 80, 90 und 95 Prozent); Erinnerungsmails für Fälligkeiten (Dokumente, Wartung, Komponenten); Stundenzähler (Hobbs, Tach) neben den Bordbuchstunden; Einheiten: Dichte des Treibstoffs je Flugzeug, Gewichte der Personen in lb für Vereine, die so wiegen; ein abgelaufenes Dokument sperrt je Dokument (Schalter), eine Ausnahme mit Begründung (z. B. Überführungsflug mit Genehmigung) ist offen; Dokumentarten als Katalog (siehe Pflichten je Funktion).
+- **Oberfläche am PC:** Einstellungen als schlanke Zeilen (Name links, Wert rechts, Zahlen speichern beim Verlassen). Im Dummy bei Manifest-Einstellungen, Modulen, Vereinsdaten und Betriebsarten umgesetzt; weitere Seiten könnten folgen.
 
-- **Datenmodell Geld:** ein einziges doppeltes Hauptbuch mit Kostenstellen (Sparten: Sportspringen, Tandem, Charter von Mitgliedern, Charter an andere Clubs); Mitgliederkonten als Unterkonten; Kostenstellen und Kostenarten vom Verein pflegbar, nie fest einprogrammiert; **Belege** als eigenes Objekt (Eingang, Verknüpfung mit Bankzeilen, KI-Vorschlag, Barausgaben über Kassa-Zeilen). Das war ein Entwurf aus dem Brainstorm vom 06.11.; Andreas hat die Ziele genannt (siehe 02), nicht dieses Modell bestätigt.
-- **Mitglieder-Zahlungen:** Bar-Einzahlung bucht Kassa und Betriebskonto sofort; Überweisung ist eine Einzahlung, die erst bei Eingang auf der Bank gebucht wird; Kontoauszüge am Monatsende gehen erst nach Freigabe des Kassiers an die Mitglieder. (Teilweise von Andreas verlangt: „keine automatischen Buchungen“; die Freigabe der Kontoauszüge ist Claude-Entwurf.)
-- **Nächste Schritte** für das Projekt: (1) Dummy durchsehen und `[C]`-Punkte bestätigen oder verwerfen; (2) daraus Spezifikation und Benutzerhandbuch schreiben, jede Klickfolge als Szenario, jedes Szenario später als Test; (3) Screenshots der Schlüsselabläufe erzeugen; (4) erst dann die Technik der echten V2 wählen und bauen.
-- **Quelle der Wahrheit für Rechte** in V2 wie in V1 als Katalog im Code plus Datenbank, mit Prüftests gegen Abweichungen. (V1 macht das so; für V2 nicht entschieden.)
-- **Öffentliches Repository:** Weil der Klickdummy öffentlich ist, sollten keine echten Mitglieder-, Konto- oder Zugangsdaten hineinkommen. Der Dummy nutzt erfundene Daten.
-- **Ideen aus der Recherche** (Abschnitt 3), noch nicht beschlossen: zeitlich begrenzte Freigabe für das Manifest, die zugleich zeigt, wer am Platz ist (Skyproc); Einzahlen vom Handy und elektronisches Logbuch (Burble); Offline-Erfassung im Flugbuch (Vereinsflieger).
+- **Betriebsarten, weiter:** Preisversion mit Startdatum in der Zukunft (neuer Preis ab 1.1. vorab eintragen; der Dummy gilt ab dem Tag der Änderung); Betriebsart archivieren statt löschen, sobald Flüge sie nutzen; Preis je Mitglied oder Mitgliedschaft.
+- **Sprungbetrieb nach Tandem und Sport auswerten:** Gebucht wird auf eine Kostenstelle. Wer wissen will, was Tandem und Sport kosten, bekommt eine **Auswertung ohne Buchung**: je Flug werden die belegten Plätze (Tandem-Paar 2, Sportspringer 1, bezahlter Platz mitgezählt) auf die beiden Arten verteilt und die Flugkosten anteilig angezeigt. Vorteil: keine feste Prozentzahl, nichts wird doppelt gebucht, Mischflüge sind kein Problem. Alternative, falls die Trennung buchhalterisch nötig ist: automatische Aufteilung je Flug nach Platzanteil auf zwei Kostenstellen (Rundung in ganzen Cent wie bei der Aufteilung auf mehrere Zahler); Nachteil: Tandem-Master-Platz und bezahlte leere Plätze müssen zugeordnet werden. Die Vorbelegung (Preise, Aufteilung) ist erfunden und vom Verein festzulegen.
+
+- `[Offen]` **Springergewicht:** Ob die Schwellen das reine Springergewicht meinen (Dummy) oder mit Ausrüstung und Tandem-Master, ist nicht festgelegt.
+- **Dokumente der Mitglieder, weiter:** Mitglied legt eine neue Dokumentart selbst vor (im Dummy nur das Personal, bis der Katalog der Dokumentarten steht); ob ein Springer mit abgelaufenem Dokument eingeplant werden darf (im Dummy nur Warnung, siehe „Pflichten je Funktion“); Erinnerungsmail vor Ablauf; `documents.approve` ist sensibel (auf öffentlichen Geräten mit Bestätigung), das gilt auch für den Koordinator am Platz.
+- **Pflichten (Anforderungen) je Funktion:** Funktionen sind frei konfigurierbar; eine Funktion soll auch Pflichten haben, etwa gültige Dokumente.
+  - *Dokumentarten* sind ein Katalog des Vereins: Name, Gültigkeit (läuft an einem Datum ab, feste Dauer ab Ausstellung oder unbefristet) und Vorwarnzeit. Beispiele: Medical, Pilotenlizenz, Tandem-Master-Rating, Sprunglizenz.
+  - *Anforderungen* hängen an der Funktion: im Dialog der Funktion ein dritter Reiter „Anforderungen“ neben „Name“ und „Berechtigungen“. Eine Zeile je Anforderung: Dokumentart, Pflicht oder empfohlen, und die Folge bei Fehlen oder Ablauf: „Nur Hinweis“ oder „Funktion ruht“ (ihre Berechtigungen gelten dann nicht). Dieselbe 1-aus-x-Logik wie bei den Diensten, z. B. „Medical Klasse 1 oder 2“.
+  - *Wirkung* dort, wo die Funktion gebraucht wird: Auswahl von Pilot und Diensten (Hinweis am Namen, bei „ruht“ nicht wählbar), Check-in der Sportspringer (der Hinweis mit dem Dokumentnamen existiert schon), Mitgliederakte (je Funktion der Stand), Aufgabe „Dokumente laufen ab“ für Chefpilot und Vorstand, Erinnerung per Mail.
+  - *Zusammenspiel:* Berechtigung = was die Funktion darf; Anforderung = was der Inhaber dafür vorweisen muss. Das passt zur Richtung „Warnen statt blockieren“; Sperren ist je Anforderung wählbar. Das Mitglied meldet das neue Dokument und der Chefpilot prüft das Original und gibt frei (wie der Freigabe-Ablauf der Dokumente in V1, aber ohne Datei).
+- **Teilnahme-Berechtigungen nicht automatisch für Verwaltungsfunktionen:** „Sprungflüge fliegen“ und „Als Sportspringer springen“ sind im Dummy nur den fachlichen Funktionen zugeordnet. Die V1-Regel „Obmann, Schriftführer und Kassier haben alle Rechte“ würde sie sonst jedem Vorstandsmitglied geben, auch ohne Lizenz.
+
+- **Datenmodell Geld:** ein doppeltes Hauptbuch mit Kostenstellen (Sparten); Mitgliederkonten als Unterkonten; Kostenstellen und -arten vom Verein pflegbar; Belege als eigenes Objekt (Eingang, Verknüpfung mit Bankzeilen, KI-Vorschlag, Barausgaben über Kassa-Zeilen).
+- **Mitglieder-Zahlungen:** Bar-Einzahlung bucht Kassa und Betriebskonto sofort; Überweisung ist eine Einzahlung, die erst bei Bankeingang gebucht wird; Kontoauszüge am Monatsende gehen erst nach Freigabe des Kassiers an die Mitglieder.
+- **Nächste Schritte:** (1) Dummy durchsehen, `[Entwurf]`-Punkte bestätigen oder verwerfen; (2) Spezifikation und Benutzerhandbuch schreiben, jede Klickfolge als Szenario, später als Test; (3) Screenshots der Schlüsselabläufe; (4) erst dann Technik wählen und bauen.
+- **Rechte** wie in V1 als Katalog im Code plus Datenbank, mit Prüftests gegen Abweichungen.
+- **Öffentliches Repository:** keine echten Mitglieder-, Konto- oder Zugangsdaten; der Dummy nutzt erfundene Daten.
+- **Ideen aus der Recherche:** zeitlich begrenzte Freigabe für das Manifest, die zugleich zeigt, wer am Platz ist (Skyproc); Einzahlen vom Handy und elektronisches Logbuch (Burble); Offline-Erfassung im Flugbuch (Vereinsflieger).
 
 ## 3. Recherche `[Recherche]`
 
-Stand der Recherche: 06.11.2026. Die Herstellerseiten von Burble und Vereinsflieger ließen sich nicht abrufen; die Angaben stammen aus Artikeln, App-Beschreibungen und einer Händler-PDF.
+Herstellerseiten von Burble und Vereinsflieger ließen sich nicht abrufen; die Angaben stammen aus Artikeln, App-Beschreibungen und einer Händler-PDF. Ungeprüft.
 
 - **Burble** (kommerziell, rund 130 Dropzones): Buchung, Empfang, Manifest und Berichte aus einer Datenbank. BurbleMe: Check-in, Selbst-Manifest, Load-Organizing, Transaktionsverlauf, Einzahlen vom Handy, elektronisches Logbuch, Notruf mit GPS bei Außenlandung. Quellen: [Skydivemag](https://www.skydivemag.com/new/2017-01-06-burble-burble-no-toil-nor-trouble/), [App Store](https://apps.apple.com/app/id835467501), [Parachutist](https://parachutist.com/Article/burble-and-sigma-to-integrate)
-- **Skyproc** (offen, [GitHub-Wiki](https://github-wiki-see.page/m/skygeek/skyproc/wiki/Introduction)): Zugang zum Manifest nur mit zeitlich begrenzter Freigabe („Clearance“), die zeigt, wer am Platz ist; Preisprofile mit Ausnahmen pro Mitglied; Boarding-Anzeige auf zweitem Bildschirm oder Ausdruck; läuft auch offline lokal; Berichte aus archivierten Loads.
+- **Skyproc** (offen, [GitHub-Wiki](https://github-wiki-see.page/m/skygeek/skyproc/wiki/Introduction)): Manifest-Zugang nur mit zeitlich begrenzter Freigabe („Clearance“), die zeigt, wer am Platz ist; Preisprofile mit Ausnahmen pro Mitglied; Boarding-Anzeige auf zweitem Bildschirm oder Ausdruck; läuft auch offline lokal; Berichte aus archivierten Loads.
 - **Vereinsflieger** (DACH): rollenbasierte Rechte, Flugbuch mit Offline-Erfassung und späterem Abgleich. Quelle: [Händler-PDF 2023](https://lam.akaflieg.tu-darmstadt.de/hyperkitty/list/anwaerter@akaflieg.tu-darmstadt.de/message/SMFWSFR66TFSWLXHWR7LDXTHD2GW6ACM/attachment/4/01_vereinsflieger2023-04D.pdf). Zu Abrechnung und Buchhaltung nichts Belastbares gefunden.
 - **Vereinssoftware allgemein:** Beiträge errechnen, Rechnung, SEPA-Lastschrift (braucht Mandat), Mahnwesen, Kontoauszug per SEPA-Schnittstelle abrufen und mit offenen Rechnungen abgleichen. Quellen: [LSB Sachsen-Anhalt](https://lsb-sachsen-anhalt.vibss.de/vereinsmanagement/vereinsfuehrung/verwaltung-organisation-planung/verwaltung/mitgliederverwaltung-im-verein?type=123), [VereinOnline-Leitfaden](https://www.VereinOnline.org/VereinOnline_Leitfaden_Buchhaltung.pdf)
-- **Österreichisches Vereinsrecht, § 21 VerG:** Einnahmen-Ausgaben-Rechnung samt Vermögensübersicht innerhalb von fünf Monaten nach Rechnungsjahr, laufende Aufzeichnung aller Einnahmen und Ausgaben, zwei Rechnungsprüfer. Empfohlen wird ein Kassabuch mit Belegnummer ohne nachträgliche Änderung. Aufbewahrung meist sieben Jahre, Quellen widersprechen sich (sieben oder zehn). Quellen: [Jusline § 21](https://www.jusline.at/gesetz/verg/paragraf/21.pdf), [Forum Media](https://www.forum-media.at/gesellschaftsrecht/Vorschriften/Vereinsgesetz-2002/4.-Abschnitt/21.-Rechnungslegung). **Mit dem Steuerberater klären.**
-- **Open-Source-Buchhaltung** (Firefly III, ERPNext, Odoo): keine belastbaren Angaben zu Regeln oder Belegabgleich gefunden; das eigene Modell ist keine Kopie eines Vorbilds.
+- **Österreichisches Vereinsrecht, § 21 VerG:** Einnahmen-Ausgaben-Rechnung samt Vermögensübersicht innerhalb von fünf Monaten nach Rechnungsjahr, laufende Aufzeichnung aller Einnahmen und Ausgaben, zwei Rechnungsprüfer. Empfohlen: Kassabuch mit Belegnummer ohne nachträgliche Änderung. Aufbewahrung meist sieben Jahre, Quellen widersprechen sich. Quellen: [Jusline § 21](https://www.jusline.at/gesetz/verg/paragraf/21.pdf), [Forum Media](https://www.forum-media.at/gesellschaftsrecht/Vorschriften/Vereinsgesetz-2002/4.-Abschnitt/21.-Rechnungslegung). Mit dem Steuerberater klären.
+- **Open-Source-Buchhaltung** (Firefly III, ERPNext, Odoo): keine belastbaren Angaben zu Regeln oder Belegabgleich gefunden.
 
-## 4. SEPA-Lastschrift: was außer Programmierung nötig wäre `[Recherche]`
+## 4. SEPA-Lastschrift: Folgen außerhalb der Programmierung `[Recherche]`
 
-Allgemeine Eckpunkte; die Bedingungen legt die eigene Bank fest. Dort nachfragen.
+Allgemeine Eckpunkte; die Bedingungen legt die eigene Bank fest.
 
-- Vereinbarung mit der Bank für Basis-Lastschriften, mit Prüfung des Vereins, Entgelten pro Einzug und Rücklastschrift und Einreichfristen.
+- Vereinbarung mit der Bank für Basis-Lastschriften (Prüfung des Vereins, Entgelte pro Einzug und Rücklastschrift, Einreichfristen).
 - Gläubiger-Identifikationsnummer des Vereins.
-- Mandat jedes Mitglieds (unterschrieben, aufbewahren, IBAN erfassen); ließe sich als Zusatzfeld im Aufnahmeantrag mit PDF-Ablage lösen.
-- Vorab-Information an das Mitglied vor jedem Einzug (die Rechnung kann das erfüllen, Frist meist 14 Tage, sofern nichts anderes vereinbart ist).
-- Rücklastschriften: Mitglieder können Einzüge zurückbuchen lassen (bei autorisierten Einzügen innerhalb von 8 Wochen); das kostet Gebühren und braucht einen Ablauf in der Software.
+- Mandat jedes Mitglieds (unterschrieben, aufbewahren, IBAN erfassen); denkbar als Zusatzfeld im Aufnahmeantrag mit PDF-Ablage.
+- Vorab-Information vor jedem Einzug (die Rechnung kann das erfüllen, Frist meist 14 Tage).
+- Rücklastschriften: bei autorisierten Einzügen innerhalb von 8 Wochen möglich; kostet Gebühren und braucht einen Ablauf in der Software.
 - Die Software erzeugt eine Datei, die der Kassier im Online-Banking freigibt (Vier-Augen-Prinzip möglich).
-- `[Vorschlag]` Zuerst Rechnung mit Überweisung und Mahnung einführen, Lastschrift später als zweite Zahlart, ohne dass sich das Hauptbuch ändert.
+- `[Vorschlag]` Zuerst Rechnung mit Überweisung und Mahnung, Lastschrift später als zweite Zahlart, ohne dass sich das Hauptbuch ändert.

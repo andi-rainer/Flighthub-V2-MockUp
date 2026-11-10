@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import MemberDocuments from './MemberDocuments'
 import { ArrowLeft, FileText } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -17,7 +18,6 @@ import { CATEGORY_LABELS, PERMISSION_CATALOG, isCurrent, labelOf, permissionsFor
 import { TODAY_ISO } from '../../state'
 
 type Tab = 'daten' | 'konto' | 'mitgliedschaft' | 'dokumente' | 'verlauf'
-const docTone = { ok: 'ok', bald: 'warn', abgelaufen: 'bad' } as const
 
 /**
  * The Mitgliederakte: everything about one person on one PC page, in tabs.
@@ -180,14 +180,7 @@ export default function MemberFile() {
 
       {tab === 'dokumente' && (
         <div className="grid gap-5 lg:grid-cols-2">
-          <Card className="p-5">
-            <div className="mb-2 text-sm font-semibold">Ausweise und Lizenzen</div>
-            <div className="divide-y divide-line">
-              {m.docs.map((d) => <div key={d.label} className="flex items-center justify-between py-2.5 text-sm"><span>{d.label}</span><span className="flex items-center gap-2 text-muted">{d.expires}<Badge tone={docTone[d.state]}>{d.state === 'ok' ? 'gültig' : d.state === 'bald' ? 'läuft bald ab' : 'abgelaufen'}</Badge></span></div>)}
-              {m.docs.length === 0 && <p className="py-2 text-sm text-muted">Keine erfasst.</p>}
-            </div>
-            <div className="mt-3"><Button>Dokument hinzufügen</Button></div>
-          </Card>
+          <Card className="p-5"><MemberDocuments memberId={m.id} /></Card>
           <Card className="p-5">
             <div className="mb-2 flex items-center justify-between"><div className="text-sm font-semibold">Funktionen</div>{can('members.edit') && <Button variant="primary" onClick={() => setAssign({})}>Funktion zuweisen</Button>}</div>
             <div className="divide-y divide-line rounded-xl border border-line">

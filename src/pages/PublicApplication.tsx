@@ -1,11 +1,10 @@
-import { CheckCircle2, Clock, FileDown, Lock, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Clock, FileDown, Lock } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useApp } from '../state'
-import { ClubMark } from './members/LetterHead'
+import PublicShell, { Notice } from './PublicShell'
 import { Banner, Button, Card } from '../ui'
 import { NOW_TXT, pdfName } from './members/appHelpers'
-import { LANGS, lab, nameOf, type Lang } from './members/data'
+import { lab, nameOf, type Lang } from './members/data'
 import { ui } from './members/i18n'
 import FormFields, { answersOf, missingFields } from './members/FormFields'
 import PdfSheet from './members/PdfSheet'
@@ -16,7 +15,6 @@ import SignaturePad from './members/SignaturePad'
  * afterwards. Known data (name, current membership) is filled in and cannot be changed.
  */
 export default function PublicApplication({ id }: { id: string }) {
-  const nav = useNavigate()
   const { apps, setApps, forms, branding } = useApp()
   const app = apps.find((a) => a.id === id)
   const form = app && forms.find((f) => f.name === app.formName)
@@ -38,16 +36,8 @@ export default function PublicApplication({ id }: { id: string }) {
     setDone(true)
   }
 
-  const shell = (body: React.ReactNode) => (
-    <div className="h-full overflow-y-auto bg-canvas">
-      <div className="mx-auto max-w-xl space-y-4 p-4 md:py-10">
-        <div className="flex items-center justify-between"><div className="flex items-center gap-3"><ClubMark b={design} size={36} /><div className="text-lg font-semibold tracking-tight">{design.name}</div></div><div className="flex items-center gap-3"><span className="hidden items-center gap-1 text-xs text-muted sm:inline-flex"><ShieldCheck size={14} /> {t.secure}</span><div className="flex overflow-hidden rounded-lg border border-line bg-surface text-xs font-medium">{LANGS.map((l) => <button key={l.id} onClick={() => setLang(l.id)} aria-pressed={lang === l.id} className={lang === l.id ? 'bg-brand px-2.5 py-1.5 text-white' : 'px-2.5 py-1.5 text-muted hover:bg-slate-50'}>{l.id.toUpperCase()}</button>)}</div></div></div>
-        {body}
-        <button onClick={() => nav('/mitglieder?tab=antraege')} className="block w-full text-center text-xs text-muted hover:text-ink">Nur im Klickdummy: zurück zur Verwaltung</button>
-      </div>
-    </div>
-  )
-  const note = (icon: React.ReactNode, title: string, text: string) => <Card className="space-y-2 p-8 text-center"><div className="mx-auto w-fit text-muted">{icon}</div><div className="text-lg font-semibold">{title}</div><p className="text-sm text-muted">{text}</p></Card>
+  const shell = (body: React.ReactNode) => <PublicShell design={design} lang={lang} onLang={setLang} back={{ label: 'Nur im Klickdummy: zurück zur Verwaltung', to: '/mitglieder?tab=antraege' }}>{body}</PublicShell>
+  const note = (icon: React.ReactNode, title: string, text: string) => <Notice icon={icon} title={title} text={text} />
 
   if (!app || !version) return shell(note(<Lock size={28} />, t.invalid, t.invalidText))
   if (app.status === 'Abgelaufen') return shell(note(<Clock size={28} />, t.expired, t.expiredText))

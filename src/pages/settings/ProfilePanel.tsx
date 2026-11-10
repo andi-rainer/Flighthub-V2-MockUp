@@ -6,7 +6,7 @@ const inp = 'mt-1 h-11 w-full rounded-lg border border-line bg-surface px-3 text
 
 /** My own data. What the member may change herself; the club edits the same record in the member file. */
 export default function ProfilePanel() {
-  const { persona, profileOf, updateProfile, weights, hasFunction } = useApp()
+  const { persona, profileOf, updateProfile, weights, memberCan } = useApp()
   const id = persona.memberId
   const saved = profileOf(id)
   const [form, setForm] = useState(saved)
@@ -17,7 +17,7 @@ export default function ProfilePanel() {
     updateProfile(id, form, Number(kg) || undefined)
     setNote(form.email !== saved.email ? `Gespeichert. An ${form.email} ging ein Bestätigungslink. Bis du ihn öffnest, melden wir dich weiter mit ${saved.email} an.` : 'Gespeichert. Die Änderung steht im Verlauf deiner Akte.')
   }
-  const jumper = hasFunction(id, 'sport_jumper')
+  const jumper = memberCan(id, 'manifest.jumps.sport')
   return (
     <Card className="max-w-3xl space-y-6 p-5">
       {note && <Banner>{note}</Banner>}

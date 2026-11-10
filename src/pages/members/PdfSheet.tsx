@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react'
 import { fillText, lab, txt, type Application, type FormField, type FormVersion, type Lang } from './data'
 import { ui } from './i18n'
+import PrintFrame, { PRINT_PAGE } from '../../PrintFrame'
 import LetterHead, { LetterFoot } from './LetterHead'
 
 /** The content of a version split into pages at every page break. */
@@ -10,7 +12,7 @@ const pagesOf = (fields: FormField[]) => fields.reduce<FormField[][]>((pages, f)
  * editor and the signed PDF that is stored with the member. It is generated from the content of the form version
  * (fields and texts in order), so nobody designs a PDF by hand.
  */
-export default function PdfSheet({ title, version, answers, signedAt, channel, note, no, verified, prefilled, lang = 'de' }: {
+export default function PdfSheet({ title, version, answers, signedAt, channel, note, no, verified, prefilled, lang = 'de', lead }: {
   title: string; version: FormVersion
   /** Without answers the sheet is blank (lines to write on). */
   answers?: Application['answers']
@@ -19,6 +21,8 @@ export default function PdfSheet({ title, version, answers, signedAt, channel, n
   prefilled?: boolean
   /** Language of the printed form. `title` is expected in the same language. */
   lang?: Lang
+  /** Shown left of the download button. */
+  lead?: ReactNode
 }) {
   const t = ui(lang)
   const blank = !answers
@@ -37,11 +41,12 @@ export default function PdfSheet({ title, version, answers, signedAt, channel, n
     )
   }
   return (
+    <PrintFrame name={title} lead={lead}>
     <div className="space-y-4">
       {pages.map((page, i) => {
         const last = i === pages.length - 1
         return (
-          <div key={i} className="mx-auto flex w-full max-w-[560px] flex-col rounded-sm border border-line bg-white p-8 text-[12px] leading-relaxed text-slate-900 shadow-md" style={{ aspectRatio: '1 / 1.414' }}>
+          <div key={i} {...PRINT_PAGE} className="mx-auto flex w-full max-w-[560px] flex-col rounded-sm border border-line bg-white p-8 text-[12px] leading-relaxed text-slate-900 shadow-md" style={{ aspectRatio: '1 / 1.414' }}>
             {i === 0 ? (
               <>
                 <LetterHead design={d} />
@@ -73,5 +78,6 @@ export default function PdfSheet({ title, version, answers, signedAt, channel, n
         )
       })}
     </div>
+    </PrintFrame>
   )
 }

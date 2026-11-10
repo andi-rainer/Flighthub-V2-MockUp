@@ -11,6 +11,8 @@ const de = {
   invalid: 'Dieser Link ist nicht gültig', invalidText: 'Bitte frage beim Verein nach einem neuen Link.', expired: 'Dieser Link ist abgelaufen', expiredText: 'Links gelten 72 Stunden. Bitte frage beim Verein nach einem neuen Link, er schickt dir sofort einen.',
   paper: 'Dieser Antrag läuft auf Papier', paperText: 'Bitte gib das ausgefüllte und unterschriebene Formular beim Verein ab oder schicke den Scan.', received: 'Dieser Antrag ist schon eingegangen', receivedText: 'Danke, der Verein hat deinen Antrag und prüft ihn.',
   invoice: 'Rechnung', reminder: 'Zahlungsaufforderung', to: 'An', fee: 'Mitgliedsbeitrag', payableBy: 'Zahlbar bis', after14: '14 Tage nach Erhalt', after7: '7 Tage nach Erhalt', paymentRef: 'Verwendungszweck',
+  checkinTitle: 'Tandem-Check-in', whoAreYou: 'Wer bist du?', pickName: 'Tippe auf deinen Namen.', windowAt: (w: string) => `Zeitfenster ${w}`, noOneExpected: 'Heute ist kein Gast mehr zu erwarten.', notInList: 'Ich finde mich nicht in der Liste', notInListText: 'Bitte melde dich beim Manifest. Wir legen deine Buchung kurz an.',
+  hi: (n: string) => `Hallo ${n}`, contractIntro: 'Bitte lies den Beförderungsvertrag, fülle die offenen Angaben aus und unterschreibe am Ende.', sign: 'Unterschreiben und einchecken', changeGuest: 'Das bin ich nicht', checkedIn: 'Du bist eingecheckt', checkedInText: 'Danke. Bitte warte in der Nähe des Manifests, wir rufen dich auf. Dein unterschriebener Vertrag ist gespeichert.', mailCopy: (m: string) => `Eine Kopie geht an ${m}.`, nextGuest: 'Nächster Gast', alreadyIn: 'Schon eingecheckt',
   overdue: (due: string) => `Der Beitrag war am ${due} fällig und ist noch offen. Bitte überweise ihn bis zum angegebenen Datum.`,
 }
 const en: typeof de = {
@@ -23,6 +25,8 @@ const en: typeof de = {
   invalid: 'This link is not valid', invalidText: 'Please ask the club for a new link.', expired: 'This link has expired', expiredText: 'Links are valid for 72 hours. Please ask the club for a new link, they will send one right away.',
   paper: 'This application is on paper', paperText: 'Please hand in the completed and signed form at the club or send the scan.', received: 'This application has already been received', receivedText: 'Thank you, the club has your application and is reviewing it.',
   invoice: 'Invoice', reminder: 'Payment request', to: 'To', fee: 'Membership fee', payableBy: 'Payable by', after14: '14 days after receipt', after7: '7 days after receipt', paymentRef: 'Payment reference',
+  checkinTitle: 'Tandem check-in', whoAreYou: 'Who are you?', pickName: 'Tap your name.', windowAt: (w) => `Time window ${w}`, noOneExpected: 'No more guests are expected today.', notInList: 'I cannot find myself in the list', notInListText: 'Please see the manifest desk. We will create your booking quickly.',
+  hi: (n) => `Hello ${n}`, contractIntro: 'Please read the carriage agreement, fill in the open details and sign at the end.', sign: 'Sign and check in', changeGuest: 'This is not me', checkedIn: 'You are checked in', checkedInText: 'Thank you. Please wait near the manifest desk, we will call you. Your signed agreement is saved.', mailCopy: (m) => `A copy goes to ${m}.`, nextGuest: 'Next guest', alreadyIn: 'Already checked in',
   overdue: (due) => `The fee was due on ${due} and is still open. Please transfer it by the stated date.`,
 }
 export const ui = (lang: Lang = 'de') => (lang === 'en' ? en : de)
