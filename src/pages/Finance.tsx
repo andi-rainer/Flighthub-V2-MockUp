@@ -2,27 +2,41 @@ import clsx from 'clsx'
 import { useSearchParams } from 'react-router-dom'
 import { currentCharterRatePerMin, eur, fixedCostsYear, varPerMinute } from '../data'
 import { type Permission } from '../permissions'
-import { useApp } from '../state'
+import { TODAY_ISO, useApp } from '../state'
 import { Banner, Card, PageHeader, Stat } from '../ui'
 import Accounts from './finance/Accounts'
-import Bank from './finance/Bank'
 import Config from './finance/Config'
+import Expenses from './finance/Expenses'
 import Flights from './finance/Flights'
+import Invoices from './finance/Invoices'
+import Journal from './finance/Journal'
+import MoneyAccounts from './finance/MoneyAccounts'
+import Periods from './finance/Periods'
+import { fuelStats, perLiter } from './finance/parts'
+import { isTodo, lineStatus } from './finance/status'
 import { computeSparten } from './finance/results'
 
-type Tab = 'bank' | 'verrechnen' | 'konten' | 'ergebnis' | 'konfig'
+type Tab = 'bank' | 'auslagen' | 'rechnungen' | 'geldkonten' | 'zeitraeume' | 'verrechnen' | 'konten' | 'ergebnis' | 'konfig'
 
 export default function Finance() {
   // The tab lives in the address, so coming back from a member file lands on the same tab.
   const [params, setParams] = useSearchParams()
   const tab = (params.get('tab') as Tab) ?? 'bank'
   const setTab = (t: Tab) => setParams({ tab: t }, { replace: true })
+  /** The bookings tab, opened on an account or on the open items of a month. */
+  const showBookings = (p: { konto?: string; monat?: string }) => setParams({ tab: 'bank', ...(p.konto ? { konto: p.konto } : {}), ...(p.monat ? { monat: p.monat, offen: '1' } : {}) })
 
   const { ledger, flights, can } = useApp()
-  const open = ledger.lines.filter((l) => !ledger.done[l.id]).length
+  const open = ledger.lines.filter((l) => isTodo(lineStatus(l, ledger))).length
+  const unpaid = ledger.receipts.filter((r) => !r.lineId && !ledger.expenseOf(r.id)).length
+  const expenses = ledger.expenses.filter((x) => x.status === 'offen').length
   const toCharge = flights.filter((f) => f.state === 'offen').length
   const all: { id: Tab; label: string; badge?: number; perm?: Permission }[] = [
-    { id: 'bank', label: 'Bank und Belege', badge: open },
+    { id: 'bank', label: 'Buchungen', badge: open },
+    { id: 'auslagen', label: 'Auslagen', badge: expenses, perm: 'billing.bank.manage' },
+    { id: 'rechnungen', label: 'Rechnungen', badge: unpaid },
+    { id: 'geldkonten', label: 'Geldkonten' },
+    { id: 'zeitraeume', label: 'Zeiträume' },
     { id: 'verrechnen', label: 'Flüge verrechnen', badge: toCharge, perm: 'billing.flights.charge' },
     { id: 'konten', label: 'Betriebskonten', perm: 'billing.accounts.view' },
     { id: 'ergebnis', label: 'Ergebnis', perm: 'manifest.reports.view' },
@@ -39,7 +53,11 @@ export default function Finance() {
           </button>
         ))}
       </div>
-      {tab === 'bank' && <Bank ledger={ledger} />}
+      {tab === 'bank' && <Journal key={`${params.get('konto')}|${params.get('monat')}`} ledger={ledger} preset={{ account: params.get('konto') ?? undefined, month: params.get('monat') ?? undefined, todo: params.get('offen') === '1' }} />}
+      {tab === 'auslagen' && <Expenses ledger={ledger} />}
+      {tab === 'rechnungen' && <Invoices ledger={ledger} />}
+      {tab === 'geldkonten' && <MoneyAccounts ledger={ledger} onShow={(konto) => showBookings({ konto })} />}
+      {tab === 'zeitraeume' && <Periods ledger={ledger} onShow={(monat) => showBookings({ monat })} />}
       {tab === 'verrechnen' && <Flights />}
       {tab === 'konten' && <Accounts ledger={ledger} />}
       {tab === 'ergebnis' && <Result />}
@@ -52,20 +70,24 @@ export default function Finance() {
 }
 
 function Result() {
+  const { ledger } = useApp()
+  const yearAgo = `${Number(TODAY_ISO.slice(0, 4)) - 1}${TODAY_ISO.slice(4)}`
+  const fuel = fuelStats(ledger.receipts.filter((r) => r.date >= yearAgo))
   const { rows, totalMin, income, cost, perMin } = computeSparten()
   const charter = rows.find((r) => r.id === 's3')!
   const charterRate = charter.minutes ? charter.cost / charter.minutes : 0
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Einnahmen 2026" value={eur(income)} hint="aus gebuchten Tickets und Rechnungen" />
-        <Stat label="Kosten 2026" value={eur(cost)} hint={`variabel ${eur(totalMin * varPerMinute)} · fix ${eur(fixedCostsYear)}`} />
-        <Stat label="Ergebnis" value={eur(income - cost)} tone={income - cost >= 0 ? 'ok' : 'bad'} hint="echte Zahlen, keine Schätzung" />
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Stat compact label="Einnahmen 2026" value={eur(income)} hint="aus gebuchten Tickets und Rechnungen" />
+        <Stat compact label="Kosten 2026" value={eur(cost)} hint={`variabel ${eur(totalMin * varPerMinute)} · fix ${eur(fixedCostsYear)}`} />
+        <Stat compact label="Ergebnis" value={eur(income - cost)} tone={income - cost >= 0 ? 'ok' : 'bad'} />
+        {fuel && <Stat compact label="Ø Treibstoffpreis" value={perLiter(fuel.avg)} hint={`${Math.round(fuel.liters)} L, letzte 12 Monate`} />}
       </div>
 
       <Card className="overflow-hidden">
-        <div className="border-b border-line px-5 py-3 font-semibold">Ergebnis je Sparte (OE-DZA)</div>
+        <div className="border-b border-line px-5 py-2 font-semibold">Ergebnis je Sparte (OE-DZA)</div>
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
             <tr><th className="px-5 py-2 font-medium">Sparte</th><th className="px-3 py-2 text-right font-medium">Minuten</th><th className="px-3 py-2 text-right font-medium">Einnahmen</th><th className="px-3 py-2 text-right font-medium">Kosten</th><th className="px-5 py-2 text-right font-medium">Ergebnis</th></tr>
@@ -73,22 +95,22 @@ function Result() {
           <tbody className="divide-y divide-line tabular-nums">
             {rows.map((r) => (
               <tr key={r.id}>
-                <td className="px-5 py-3 font-medium">{r.name}</td>
-                <td className="px-3 py-3 text-right">{r.minutes.toLocaleString('de-AT')}</td>
-                <td className="px-3 py-3 text-right">{eur(r.income)}</td>
-                <td className="px-3 py-3 text-right">{eur(r.cost)}</td>
-                <td className={clsx('px-5 py-3 text-right font-semibold', r.result >= 0 ? 'text-ok' : 'text-bad')}>{eur(r.result)}</td>
+                <td className="px-5 py-2 font-medium">{r.name}</td>
+                <td className="px-3 py-2 text-right">{r.minutes.toLocaleString('de-AT')}</td>
+                <td className="px-3 py-2 text-right">{eur(r.income)}</td>
+                <td className="px-3 py-2 text-right">{eur(r.cost)}</td>
+                <td className={clsx('px-5 py-2 text-right font-semibold', r.result >= 0 ? 'text-ok' : 'text-bad')}>{eur(r.result)}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </Card>
 
-      <Card className="p-5">
+      <Card className="px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="text-sm font-semibold">Kostendeckender Satz OE-DZA</div>
-            <div className="mt-1 text-3xl font-semibold tabular-nums">{eur(perMin)} <span className="text-base font-normal text-muted">pro Minute · {eur(perMin * 60)} pro Stunde</span></div>
+            <div className="text-2xl font-semibold tabular-nums">{eur(perMin)} <span className="text-base font-normal text-muted">pro Minute · {eur(perMin * 60)} pro Stunde</span></div>
             <div className="mt-1 text-sm text-muted">{eur(varPerMinute)}/min variabel + {eur(fixedCostsYear / totalMin)}/min Fixkosten bei {Math.round(totalMin / 60)} Flugstunden</div>
           </div>
           {charterRate > currentCharterRatePerMin && (

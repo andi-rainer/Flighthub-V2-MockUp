@@ -1,17 +1,22 @@
 import clsx from 'clsx'
 import { Copy, FileText, Plus } from 'lucide-react'
 import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { eur } from '../../data'
-import { Badge, Button, Card, Drawer, Segmented, Switch } from '../../ui'
-import { pdfTemplates, products, type PdfTemplate, type Product } from './data'
+import { useApp } from '../../state'
+import { Badge, Button, Card, Drawer, Segmented } from '../../ui'
+import { KIND_NAME, type CatalogItem } from '../tickets/data'
+import { pdfTemplates, type PdfTemplate } from './data'
 
 type View = 'produkte' | 'vorlagen'
 
+/** What the shop shows of the catalog: texts and PDFs. Name, price, validity and availability are managed under Tickets und Voucher. */
 export default function Products({ onText }: { onText: (page: string) => void }) {
+  const { catalog: products, can } = useApp()
+  const nav = useNavigate()
   const [view, setView] = useState<View>('produkte')
-  const [open, setOpen] = useState<Product | null>(null)
+  const [open, setOpen] = useState<CatalogItem | null>(null)
   const [tpl, setTpl] = useState<PdfTemplate | null>(null)
-  const [active, setActive] = useState<Record<string, boolean>>({})
   const tplOf = (id: string) => pdfTemplates.find((t) => t.id === id)!
   const usedBy = (id: string) => products.filter((p) => p.templateId === id)
 
@@ -19,7 +24,7 @@ export default function Products({ onText }: { onText: (page: string) => void })
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Segmented<View> value={view} onChange={setView} options={[{ value: 'produkte', label: 'Produkte' }, { value: 'vorlagen', label: 'PDF-Vorlagen' }]} />
-        <Button variant="primary"><Plus size={16} /> {view === 'produkte' ? 'Neues Produkt' : 'Neue Vorlage'}</Button>
+        {view === 'produkte' ? (can('vouchers.catalog.manage') && <Button variant="primary" onClick={() => nav('/tickets?tab=arten')}>Produkte verwalten</Button>) : <Button variant="primary"><Plus size={16} /> Neue Vorlage</Button>}
       </div>
 
       {view === 'produkte' ? (
@@ -28,7 +33,7 @@ export default function Products({ onText }: { onText: (page: string) => void })
             {products.map((p) => (
               <div key={p.id} onClick={() => setOpen(p)} className="flex cursor-pointer flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50">
                 <div className="min-w-0 flex-1 basis-56">
-                  <div className="font-medium">{p.name} <Badge tone={p.kind === 'Gutschein' ? 'info' : 'neutral'}>{p.kind}</Badge></div>
+                  <div className="font-medium">{p.name} <Badge tone={p.kind === 'voucher' ? 'info' : 'neutral'}>{KIND_NAME[p.kind]}</Badge>{!p.active && <> <Badge>Ausgeschaltet</Badge></>}</div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                     <FileText size={12} /> {tplOf(p.templateId).name}
                     <span>· sichtbar auf:</span>
@@ -36,7 +41,6 @@ export default function Products({ onText }: { onText: (page: string) => void })
                   </div>
                 </div>
                 <div className="w-20 text-right font-semibold tabular-nums">{eur(p.price)}</div>
-                <Switch checked={active[p.id] ?? p.active} onChange={(v) => setActive((a) => ({ ...a, [p.id]: v }))} label={`${p.name} im Shop anzeigen`} />
               </div>
             ))}
           </Card>
@@ -89,18 +93,11 @@ function Thumb({ type, large }: { type: string; large?: boolean }) {
   )
 }
 
-function ProductForm({ p, onEditTemplate, onText }: { p: Product; onEditTemplate: (id: string) => void; onText: (page: string) => void }) {
-  const [tplId, setTplId] = useState(p.templateId)
+function ProductForm({ p, onEditTemplate, onText }: { p: CatalogItem; onEditTemplate: (id: string) => void; onText: (page: string) => void }) {
   const inp = 'h-11 w-full rounded-lg border border-line px-3 text-sm outline-none focus:border-brand'
-  const group = pdfTemplates.filter((t) => t.type === p.kind)
   return (
     <div className="space-y-5 text-sm">
-      <section className="grid grid-cols-2 gap-3">
-        <label>Name (Deutsch)<input className={clsx(inp, 'mt-1')} defaultValue={p.name} /></label>
-        <label>Name (English)<input className={clsx(inp, 'mt-1')} defaultValue={p.nameEn} /></label>
-        <label>Preis (EUR)<input className={clsx(inp, 'mt-1')} defaultValue={p.price} /></label>
-        {p.kind === 'Gutschein' ? <label>Gültig (Monate)<input className={clsx(inp, 'mt-1')} defaultValue={p.validityMonths} /></label> : <label>Code-Präfix<input className={clsx(inp, 'mt-1')} defaultValue={p.prefix} /></label>}
-      </section>
+      <Link to="/tickets?tab=arten" className="flex items-center justify-between rounded-lg border border-line px-3 py-2.5 hover:bg-slate-50"><span><span className="font-medium">{eur(p.price)}</span>{p.validityMonths ? ` · ${p.validityMonths} Monate gültig` : ''}<span className="block text-xs text-muted">Name, Preis und Verfügbarkeit</span></span><span className="text-brand">Verwalten</span></Link>
       <label className="block">Beschreibung<textarea rows={3} defaultValue={p.description} className="mt-1 w-full rounded-lg border border-line p-3 outline-none focus:border-brand" /></label>
       <section>
         <div className="mb-1 font-medium">Leistungen</div>
@@ -108,10 +105,7 @@ function ProductForm({ p, onEditTemplate, onText }: { p: Product; onEditTemplate
       </section>
       <section>
         <div className="mb-1 font-medium">PDF-Vorlage</div>
-        <div className="flex gap-2">
-          <select value={tplId} onChange={(e) => setTplId(e.target.value)} className={clsx(inp, 'flex-1')}>{group.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
-          <Button onClick={() => onEditTemplate(tplId)}>Vorlage ansehen</Button>
-        </div>
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-line px-3 py-2">{pdfTemplates.find((t) => t.id === p.templateId)?.name}<Button onClick={() => onEditTemplate(p.templateId)}>Vorlage ansehen</Button></div>
       </section>
       <section>
         <div className="mb-1 font-medium">Wo sieht der Kunde das?</div>

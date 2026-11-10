@@ -4,7 +4,8 @@ import { useState, type MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { dayIso, dayShort, fmtAbs, hmOf, toAbs } from '../dates'
 import { aircraft, members } from '../data'
-import { useApp, type Reservation } from '../state'
+import { TODAY_ISO, useApp, type Reservation } from '../state'
+import { groundedReason } from './aircraft/data'
 import { Banner, Button, Drawer, PageHeader } from '../ui'
 import { flightKey, flightPath } from './FlightPage'
 
@@ -29,7 +30,7 @@ interface Form { id?: number; aircraft: string; fromDate: string; fromTime: stri
  */
 export default function Reservations() {
   const nav = useNavigate()
-  const { persona, can, reservations: res, setReservations: setRes, afps } = useApp()
+  const { persona, can, reservations: res, setReservations: setRes, afps, afpConfig, modules, aircraftData } = useApp()
   const me = members.find((m) => m.id === persona.memberId)!
   const [offset, setOffset] = useState(0)
   const [count, setCount] = useState(PAGE)
@@ -82,7 +83,7 @@ export default function Reservations() {
     const done = afps[flightKey({ kind: 'res', resId: r.id })]
     const editable = !r.priority && (mine || can('reservations.manage.any'))
     const label = `${s < 0 ? '← ' : ''}${fmtH(Math.max(s, 0))}–${e > 24 ? '24:00' : fmtH(e)}${e > 24 ? ' →' : ''}`
-    const canFly = mine && !r.standby && mayFly
+    const canFly = mine && !r.standby && mayFly && afpConfig.enabled
     const state = done ? (done.status === 'Gelandet' ? 'beendet' : 'läuft') : 'Flug beginnen'
     return (
       <div key={r.id} title={`${fmtAbs(r.from)} bis ${fmtAbs(r.to)}${editable ? ' · klicken zum Bearbeiten' : ''}`}
@@ -116,12 +117,12 @@ export default function Reservations() {
         <Button onClick={() => setOffset(offset + PAGE)}><ChevronRight size={16} /></Button>
         <span className="ml-2 text-sm text-muted">{dayShort(offset)} bis {dayShort(offset + count - 1)}</span>
       </div>
-      {note && <div className="mb-3"><Banner><span className="flex flex-wrap items-center justify-between gap-3"><span>{note.text}</span>{note.resId && mayFly && <Button variant="primary" onClick={() => nav(flightPath({ kind: 'res', resId: note.resId! }))}>Flug beginnen</Button>}</span></Banner></div>}
+      {note && <div className="mb-3"><Banner><span className="flex flex-wrap items-center justify-between gap-3"><span>{note.text}</span>{note.resId && mayFly && afpConfig.enabled && <Button variant="primary" onClick={() => nav(flightPath({ kind: 'res', resId: note.resId! }))}>Flug beginnen</Button>}</span></Banner></div>}
 
       <div className="overflow-hidden rounded-xl border border-line bg-surface">
         {days.map((d) => {
           const today = d === 0
-          const dayRes = res.filter((r) => r.from < (d + 1) * 24 && r.to > d * 24)
+          const dayRes = res.filter((r) => (modules.skydive || !r.priority) && r.from < (d + 1) * 24 && r.to > d * 24)
           const active = dayRes.filter((r) => !r.standby).length, standby = dayRes.filter((r) => r.standby).length
           return (
             <section key={d}>
@@ -150,7 +151,8 @@ export default function Reservations() {
               {aircraft.map((a) => {
                 const lane = dayRes.filter((r) => r.aircraft === a.reg)
                 const standbys = lane.filter((r) => r.standby).sort((x, y) => x.id - y.id)
-                const away = a.status === 'wartung'
+                const reason = groundedReason(a.status, aircraftData[a.id], TODAY_ISO)
+                const away = reason !== null
                 const height = away ? 30 : standbys.length === 0 ? ACTIVE_TOP + ACTIVE_H + 10 : STANDBY_TOP + standbys.length * (STANDBY_H + STANDBY_GAP) + 8
                 return (
                   <div key={a.id} className="flex border-b border-line/50 last:border-b-0" style={{ height }}>
@@ -162,7 +164,7 @@ export default function Reservations() {
                       className={clsx('relative flex-1', away ? 'cursor-not-allowed' : 'cursor-cell hover:bg-slate-50/70')}>
                       {hourTicks.map((h) => <div key={h} className="pointer-events-none absolute bottom-0 top-0 w-px bg-slate-900/[0.05]" style={{ left: `${pct(h)}%` }} />)}
                       {today && <div className="pointer-events-none absolute bottom-0 top-0 w-px bg-brand/50" style={{ left: `${pct(NOW)}%` }} />}
-                      {away && <div className="absolute inset-0 grid place-items-center bg-warn-soft text-[11px] text-warn">in Wartung bis 24.11.</div>}
+                      {away && <div className="absolute inset-0 grid place-items-center bg-warn-soft text-[11px] text-warn">{a.status === 'wartung' ? 'in Wartung bis 24.11.' : `${reason}, keine Reservierung möglich`}</div>}
                       {lane.filter((r) => !r.standby).map((r) => block(r, d, ACTIVE_TOP, ACTIVE_H))}
                       {standbys.map((r, i) => block(r, d, STANDBY_TOP + i * (STANDBY_H + STANDBY_GAP), STANDBY_H, i + 1))}
                     </div>
@@ -174,7 +176,7 @@ export default function Reservations() {
         })}
       </div>
       <div className="mt-3 flex items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-3 text-xs text-muted"><span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm border-l-[3px] border-brand bg-brand-soft" />Sprungtag (hat Vorrang)</span><span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm border-l-[3px] border-ok bg-ok-soft" />deine Reservierung (Flugzeug-Symbol: Flug beginnen)</span><span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm border border-dashed border-warn" />Standby</span></div>
+        <div className="flex flex-wrap gap-3 text-xs text-muted">{modules.skydive && <span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm border-l-[3px] border-brand bg-brand-soft" />Sprungtag (hat Vorrang)</span>}<span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm border-l-[3px] border-ok bg-ok-soft" />deine Reservierung (Flugzeug-Symbol: Flug beginnen)</span><span className="flex items-center gap-1.5"><i className="h-3 w-3 rounded-sm border border-dashed border-warn" />Standby</span></div>
         <Button onClick={() => setCount(count + PAGE)}>Weitere {PAGE} Tage</Button>
       </div>
 
@@ -185,12 +187,13 @@ export default function Reservations() {
 
 
 function DrawerForm({ form, setForm, err, save, remove }: { form: Form | null; setForm: (f: Form | null) => void; err: string | null; save: () => void; remove: () => void }) {
+  const { aircraftData } = useApp()
   return (
     <Drawer open={!!form} title={form?.id ? 'Reservierung bearbeiten' : 'Flugzeug reservieren'} onClose={() => setForm(null)}
       footer={form && <div className="flex gap-2"><Button variant="primary" size="lg" className="flex-1" onClick={save}>{form.id ? 'Speichern' : 'Reservieren'}</Button>{form.id && <Button variant="danger" size="lg" onClick={remove}>Löschen</Button>}</div>}>
       {form && (
         <div className="space-y-4 text-sm">
-          <label className="block font-medium">Flugzeug<select value={form.aircraft} onChange={(e) => setForm({ ...form, aircraft: e.target.value })} className="mt-1 h-11 w-full rounded-lg border border-line px-3">{aircraft.filter((a) => a.status !== 'wartung').map((a) => <option key={a.id}>{a.reg}</option>)}</select></label>
+          <label className="block font-medium">Flugzeug<select value={form.aircraft} onChange={(e) => setForm({ ...form, aircraft: e.target.value })} className="mt-1 h-11 w-full rounded-lg border border-line px-3">{aircraft.filter((a) => groundedReason(a.status, aircraftData[a.id], TODAY_ISO) === null || a.reg === form.aircraft).map((a) => <option key={a.id}>{a.reg}</option>)}</select></label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block font-medium">Von (Datum)<input type="date" value={form.fromDate} onChange={(e) => setForm({ ...form, fromDate: e.target.value, toDate: form.toDate < e.target.value ? e.target.value : form.toDate })} className="mt-1 h-11 w-full rounded-lg border border-line px-3" /></label>
             <label className="block font-medium">Uhrzeit<input type="time" value={form.fromTime} onChange={(e) => setForm({ ...form, fromTime: e.target.value })} className="mt-1 h-11 w-full rounded-lg border border-line px-3" /></label>

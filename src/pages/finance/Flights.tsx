@@ -5,6 +5,7 @@ import { useApp } from '../../state'
 import { Badge, Banner, Button, Card, Segmented, usePaging } from '../../ui'
 
 type View = 'offen' | 'verrechnet'
+const COLS = 'md:grid-cols-[minmax(0,1.6fr)_10rem_minmax(0,1.4fr)_6rem_7rem]'
 
 /**
  * Flights never hit the ledger by themselves. A flight from the Bordbuch waits here until the treasurer
@@ -28,21 +29,22 @@ export default function Flights() {
         <Segmented<View> value={view} onChange={setView} options={[{ value: 'offen', label: `Zu verrechnen (${open.length})` }, { value: 'verrechnet', label: 'Verrechnet' }]} />
         <Button variant="primary" disabled={open.length === 0} onClick={() => charge(open.map((f) => f.id))}>{open.length} bestätigen und verrechnen</Button>
       </div>
-      <Card className="divide-y divide-line">
-        {shown.map((f) => (
-          <div key={f.id} className="flex flex-wrap items-center gap-4 px-5 py-4">
-            <div className="min-w-0 flex-1 basis-56">
-              <div className="font-medium">{f.date} · {f.aircraft} · {f.pilot}</div>
-              <div className="text-sm text-muted"><Badge tone={f.kind === 'Charter' ? 'warn' : 'neutral'}>{f.kind}</Badge> {f.minutes} min</div>
+      <Card className="overflow-hidden">
+        <div className={`hidden gap-x-3 border-b border-line bg-slate-50 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted md:grid ${COLS}`}>
+          <span>Flug</span><span>Art · Minuten</span><span>Wer zahlt</span><span className="text-right">Betrag</span><span />
+        </div>
+        <div className="divide-y divide-line">
+          {shown.map((f) => (
+            <div key={f.id} className={`grid gap-x-3 gap-y-1 px-3 py-2 md:items-center ${COLS}`}>
+              <div className="min-w-0 truncate text-sm font-medium">{f.date} · {f.aircraft} · {f.pilot}</div>
+              <div className="flex items-center gap-1.5 whitespace-nowrap text-sm text-muted"><Badge tone={f.kind === 'Charter' ? 'warn' : 'neutral'}>{f.kind}</Badge>{f.minutes} min</div>
+              <div className="min-w-0 truncate text-sm text-muted" title={f.split.map((x) => `${x.percent} % ${x.who}`).join(' · ')}>{f.split.map((x) => `${x.percent} % ${x.who}`).join(' · ')}</div>
+              <div className="text-sm font-semibold tabular-nums md:text-right">{eur(f.amount)}</div>
+              <div className="md:flex md:justify-end">{f.state === 'offen' ? <Button variant="primary" onClick={() => charge([f.id])}>Verrechnen</Button> : <Badge tone="ok">verrechnet</Badge>}</div>
             </div>
-            <div className="min-w-0 flex-1 basis-56 text-sm">
-              {f.split.map((s) => <div key={s.who} className="text-muted">{s.percent} % {s.who}</div>)}
-            </div>
-            <div className="w-28 text-right font-semibold tabular-nums">{eur(f.amount)}</div>
-            {f.state === 'offen' ? <Button variant="primary" onClick={() => charge([f.id])}>Verrechnen</Button> : <Badge tone="ok">verrechnet</Badge>}
-          </div>
-        ))}
-        {shown.length === 0 && <div className="p-8 text-center text-muted">Nichts in dieser Ansicht.</div>}
+          ))}
+          {shown.length === 0 && <div className="p-6 text-center text-sm text-muted">Nichts in dieser Ansicht.</div>}
+        </div>
         {paging.bar}
       </Card>
     </div>

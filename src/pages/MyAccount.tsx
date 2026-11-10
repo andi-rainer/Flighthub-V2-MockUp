@@ -2,7 +2,9 @@ import clsx from 'clsx'
 import { FileText } from 'lucide-react'
 import { eur, members } from '../data'
 import { useApp } from '../state'
-import { Card, PageHeader } from '../ui'
+import { useState } from 'react'
+import { Button, Card, PageHeader } from '../ui'
+import { ExpenseSubmitDrawer, MyExpenses } from './finance/ExpenseSubmit'
 
 /** Strictly the own account. Looking at other accounts needs the permission of the treasurer (Mitglieder or Finanzen). */
 export default function MyAccount() {
@@ -10,10 +12,12 @@ export default function MyAccount() {
   const m = members.find((x) => x.id === persona.memberId)!
   const balance = ledger.balances[m.id] ?? 0
   const history = ledger.history[m.id] ?? []
+  const [expense, setExpense] = useState(false)
 
   return (
     <>
-      <PageHeader title="Mein Konto" subtitle={m.name} />
+      <PageHeader title="Mein Konto" subtitle={m.name} actions={<Button variant="primary" onClick={() => setExpense(true)}>Auslage einreichen</Button>} />
+      {expense && <ExpenseSubmitDrawer onClose={() => setExpense(false)} />}
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <div className="space-y-5">
           <Card className="p-5">
@@ -35,7 +39,9 @@ export default function MyAccount() {
             </div>
           </Card>
         </div>
-        <Card className="self-start">
+        <div className="space-y-5 self-start">
+        <MyExpenses />
+        <Card>
           <div className="border-b border-line px-5 py-3 font-semibold">Buchungen</div>
           <div className="divide-y divide-line">
             {history.map((e, i) => (
@@ -46,6 +52,7 @@ export default function MyAccount() {
             ))}
           </div>
         </Card>
+        </div>
       </div>
     </>
   )

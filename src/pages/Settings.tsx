@@ -1,19 +1,16 @@
 import clsx from 'clsx'
 import { useSearchParams } from 'react-router-dom'
-import { useApp } from '../state'
 import { PageHeader } from '../ui'
-import ClubPanel from './settings/ClubPanel'
 import DevicesPanel from './settings/DevicesPanel'
 import ProfilePanel from './settings/ProfilePanel'
 import SecurityPanel from './settings/SecurityPanel'
 
-const personal = [{ id: 'profil', label: 'Mein Profil' }, { id: 'sicherheit', label: 'Passwort und Sicherheit' }, { id: 'geraete', label: 'Meine Geräte' }, { id: 'verein', label: 'Vereinsdaten' }] as const
+const personal = [{ id: 'profil', label: 'Mein Profil' }, { id: 'sicherheit', label: 'Passwort und Sicherheit' }, { id: 'geraete', label: 'Meine Geräte' }] as const
 
 /** Everything a member does about herself, for everybody. Reached from the user menu top right. */
 export default function Settings() {
   const [params, setParams] = useSearchParams()
-  const { can } = useApp()
-  const tabs = personal.filter((t) => t.id !== 'verein' || can('settings.edit.system'))
+  const tabs = personal
   const tab = tabs.find((t) => t.id === params.get('tab'))?.id ?? 'profil'
   return (
     <>
@@ -24,7 +21,6 @@ export default function Settings() {
       {tab === 'profil' && <ProfilePanel />}
       {tab === 'sicherheit' && <SecurityPanel />}
       {tab === 'geraete' && <DevicesPanel />}
-      {tab === 'verein' && <ClubPanel />}
     </>
   )
 }

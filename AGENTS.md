@@ -1,6 +1,7 @@
 # FlightHub V2 Klickdummy
 
-Klickdummy (nur UI/UX, keine echte Logik) für **FlightHub V2**, das komplett neue Vereinsverwaltungssystem für einen österreichischen Flug- und Fallschirmclub. V1 (Repository `flight-hub`) ist nur Referenz. Sprache der Oberfläche und der Dokumentation: Deutsch.
+Klickdummy (nur UI/UX, keine echte Logik) für **FlightHub V2**, das komplett neue Vereinsverwaltungssystem für einen österreichischen Flug- und Fallschirmclub. V1 (Repository `flight-hub`) ist nur Referenz. Sprache der Oberfläche und der Dokumentation für den Prototypen: Deutsch.
+Für das wirkliche Projekt: Deutsch/Englisch.
 
 **Zuerst lesen:** [docs/README.md](docs/README.md) (Statuslegende und Lesereihenfolge). Danach [docs/02-v2-beschluesse.md](docs/02-v2-beschluesse.md) und [docs/05-arbeitsregeln.md](docs/05-arbeitsregeln.md).
 
@@ -11,8 +12,6 @@ Klickdummy (nur UI/UX, keine echte Logik) für **FlightHub V2**, das komplett ne
 - **Ein klarer Weg zum Ziel.** Ausnahmen sind diskret, brauchen Grund und Bestätigung und werden dokumentiert.
 - **Keine erklärenden Info-Texte** in der Oberfläche, die nur Regeln wiederholen; Regeln gehören in die Dokumentation.
 - **Pagination** bei langen Listen, **Rückweg** („Zurück zu …“, Reiter in der Adresse) von jeder Detailseite.
-- **Commits und Pushes nur auf Wunsch von Andreas.** Das Repository ist öffentlich, jeder Push auf `main` veröffentlicht die Seite über GitHub Pages. Keine echten Daten oder Schlüssel.
-- Fragen zur **Technik der echten V2** entscheidet Andreas.
 
 ## Technik
 

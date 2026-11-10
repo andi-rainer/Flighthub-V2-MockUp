@@ -148,7 +148,7 @@ function Detail({ app, onClose, onPatch, onRemove }: { app: Application; onClose
         </ol>
       </div>
 
-      <Drawer open={blank} title={`Blanko-PDF: ${app.formName}`} onClose={() => setBlank(false)} size="xl" footer={<Button variant="primary" size="lg" className="w-full" onClick={() => setBlank(false)}>Als PDF speichern oder drucken</Button>}>
+      <Drawer open={blank} title={`Blanko-PDF: ${app.formName}`} onClose={() => setBlank(false)} size="xl">
         <PdfSheet title={form ? nameOf(form, app.lang) : app.formName} lang={app.lang} version={version} answers={app.answers} prefilled />
       </Drawer>
     </Drawer>

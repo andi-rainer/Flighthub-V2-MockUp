@@ -53,7 +53,7 @@ export default function DesignEditor({ design: b, onChange, disabled = false, mo
       <Card className="space-y-3 p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">{mode === 'version' ? 'Vereinsdaten in diesem Formular' : 'Was im Kopf steht'}</h3>
-          {can('settings.edit.system') && <Link to="/einstellungen?tab=verein" className="text-sm text-brand hover:underline">Vereinsdaten ändern</Link>}
+          {can('settings.edit.system') && <Link to="/verein" className="text-sm text-brand hover:underline">Vereinsdaten ändern</Link>}
         </div>
         <div className="divide-y divide-line rounded-xl border border-line">
           {PARTS.map((part) => {

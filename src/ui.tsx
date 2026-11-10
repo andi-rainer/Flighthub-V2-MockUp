@@ -1,6 +1,6 @@
 import clsx from 'clsx'
-import { ChevronLeft, ChevronRight, MoreHorizontal, X } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { ChevronDown, ChevronLeft, ChevronRight, MoreHorizontal, X } from 'lucide-react'
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
   return (
@@ -16,7 +16,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
 
 type BtnProps = {
   children: ReactNode
-  onClick?: () => void
+  onClick?: (e: ReactMouseEvent<HTMLButtonElement>) => void
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
   size?: 'md' | 'lg'
   className?: string
@@ -57,12 +57,12 @@ export function Card({ children, className }: { children: ReactNode; className?:
   return <div className={clsx('rounded-xl border border-line bg-surface', className)}>{children}</div>
 }
 
-export function Stat({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: 'ok' | 'bad' }) {
+export function Stat({ label, value, hint, tone, compact }: { label: string; value: string; hint?: string; tone?: 'ok' | 'bad'; compact?: boolean }) {
   return (
-    <Card className="p-4">
+    <Card className={compact ? 'px-3 py-2' : 'p-4'}>
       <div className="text-xs font-medium uppercase tracking-wide text-muted">{label}</div>
-      <div className={clsx('mt-1 text-2xl font-semibold tabular-nums', tone === 'ok' && 'text-ok', tone === 'bad' && 'text-bad')}>{value}</div>
-      {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
+      <div className={clsx('font-semibold tabular-nums', compact ? 'text-xl' : 'mt-1 text-2xl', tone === 'ok' && 'text-ok', tone === 'bad' && 'text-bad')}>{value}</div>
+      {hint && <div className={clsx('text-xs text-muted', !compact && 'mt-1')}>{hint}</div>}
     </Card>
   )
 }
@@ -104,6 +104,31 @@ export function RowMenu({ actions }: { actions: RowAction[] }) {
   )
 }
 
+/**
+ * One main action plus alternatives behind the arrow (e.g. download, or print instead). The main action is what most people want, the arrow
+ * opens the other ways in a menu.
+ */
+export function SplitButton({ children, onClick, actions, ariaLabel = 'Weitere Möglichkeiten' }: { children: ReactNode; onClick: () => void; actions: RowAction[]; ariaLabel?: string }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false)
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
+  return (
+    <div ref={ref} className="relative inline-flex">
+      <Button className="rounded-r-none" onClick={onClick}>{children}</Button>
+      <button aria-label={ariaLabel} aria-expanded={open} onClick={() => setOpen((o) => !o)} className="grid h-9 w-8 place-items-center rounded-r-lg border border-l-0 border-line bg-surface hover:bg-slate-50"><ChevronDown size={14} /></button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-xl border border-line bg-surface p-1 shadow-lg">
+          {actions.map((a) => <button key={a.label} onClick={() => { setOpen(false); a.onSelect() }} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-50">{a.label}</button>)}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function Drawer({ open, title, onClose, children, footer, size = 'md' }: { open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; size?: 'md' | 'xl' }) {
   useEffect(() => {
     if (!open) return
@@ -120,7 +145,7 @@ export function Drawer({ open, title, onClose, children, footer, size = 'md' }: 
           <button onClick={onClose} aria-label="Schließen" className="grid h-9 w-9 place-items-center rounded-lg hover:bg-slate-100"><X size={18} /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-5">{children}</div>
-        {footer && <div className="border-t border-line p-4">{footer}</div>}
+        {footer && <div className="relative border-t border-line p-4">{footer}</div>}
       </div>
     </div>
   )
@@ -204,5 +229,76 @@ export function Logo({ size = 32 }: { size?: number }) {
     <span className="block shrink-0 overflow-hidden" style={{ width: size, height: size, borderRadius: size * 0.23 }} aria-label="FlightHub">
       <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" style={{ width: '116.5%', maxWidth: 'none', marginLeft: '-8.2%', marginTop: '-8.2%' }} />
     </span>
+  )
+}
+
+/** A settings block: a quiet header (title, optional action) and rows below it, one line each on a PC. */
+export function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-line bg-surface">
+      <header className="flex h-12 items-center justify-between gap-3 border-b border-line bg-slate-50/60 px-5"><h2 className="text-sm font-semibold">{title}</h2>{action}</header>
+      <div className="divide-y divide-line">{children}</div>
+    </section>
+  )
+}
+
+/** One setting: name (and what it is for) on the left, the value or control on the right. With `onClick` the whole row opens a detail view. */
+export function Row({ label, hint, children, onClick }: { label: ReactNode; hint?: ReactNode; children?: ReactNode; onClick?: () => void }) {
+  return (
+    <div
+      onClick={onClick} onKeyDown={onClick ? (e) => e.key === 'Enter' && e.target === e.currentTarget && onClick() : undefined} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
+      className={clsx('flex min-h-14 flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-2.5', onClick && 'cursor-pointer hover:bg-slate-50')}
+    >
+      <div className="min-w-0 flex-1 basis-56"><div className="text-sm font-medium">{label}</div>{hint && <div className="text-xs text-muted">{hint}</div>}</div>
+      <div onClick={onClick ? (e) => e.stopPropagation() : undefined} className="flex shrink-0 items-center gap-2 text-sm">{children}</div>
+    </div>
+  )
+}
+
+/**
+ * Deleting needs two confirmations: first "Löschen", then a question, then a final "Endgültig löschen". `blocked` names the reason when
+ * the thing is still in use; the button is then disabled.
+ */
+export function ConfirmDelete({ what, onConfirm, blocked }: { what: string; onConfirm: () => void; blocked?: string }) {
+  const [step, setStep] = useState<0 | 1 | 2>(0)
+  if (step === 0) return <Button variant="danger" disabled={!!blocked} onClick={() => setStep(1)}><span title={blocked}>Löschen</span></Button>
+  return (
+    <div className="absolute inset-0 z-10 flex flex-wrap items-center gap-2 bg-surface px-4 text-sm">
+      <span className={step === 2 ? 'font-medium text-bad' : 'font-medium'}>{step === 1 ? `„${what}“ löschen?` : 'Endgültig löschen? Das lässt sich nicht rückgängig machen.'}</span>
+      <Button onClick={() => setStep(0)}>Abbrechen</Button>
+      {step === 1 ? <Button variant="danger" onClick={() => setStep(2)}>Ja, löschen</Button> : <Button variant="primary" className="!bg-bad hover:!bg-red-700" onClick={onConfirm}>Endgültig löschen</Button>}
+    </div>
+  )
+}
+
+/** Compact input look used in forms and filters. */
+export const field = 'h-9 rounded-lg border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand'
+
+/** Label above a form control. */
+export function Field({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+  return <label className={clsx('block text-sm font-medium', className)}>{label}<div className="mt-1 font-normal">{children}</div></label>
+}
+
+/** The form of an action that is open in the detail view: fill in, confirm or cancel. It sits above the tabs, so it is always in sight. */
+export function ActionPanel({ title, children, confirm, onConfirm, onCancel, disabled, danger }: { title: string; children: ReactNode; confirm: string; onConfirm: () => void; onCancel: () => void; disabled?: boolean; danger?: boolean }) {
+  return (
+    <div className={clsx('rounded-xl border p-4', danger ? 'border-bad/30 bg-bad-soft/40' : 'border-brand/30 bg-brand-soft/40')}>
+      <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">{title}</h3><button onClick={onCancel} aria-label="Abbrechen" className="grid h-7 w-7 place-items-center rounded-md text-muted hover:bg-white/60"><X size={14} /></button></div>
+      <div className="space-y-3">{children}</div>
+      <div className="mt-4 flex justify-end gap-2"><Button onClick={onCancel}>Abbrechen</Button><Button variant={danger ? 'danger' : 'primary'} disabled={disabled} onClick={onConfirm}>{confirm}</Button></div>
+    </div>
+  )
+}
+
+
+export interface PickedFile { name: string; size: string; /** Only in the dummy: a local link to the picked file. */ url?: string }
+/** Choose a file; only its name and size are kept (this is a click dummy, nothing is uploaded). */
+export function FilePick({ file, onPick }: { file: PickedFile | null; onPick: (f: PickedFile) => void }) {
+  const change = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) onPick({ name: f.name, size: `${Math.max(1, Math.round(f.size / 1024))} KB`, url: URL.createObjectURL(f) }) }
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-dashed border-line px-3 py-3">
+      <input aria-label="Datei wählen" type="file" onChange={change} className="text-sm" />
+      {file && <span className="ml-auto text-xs text-muted">{file.name} · {file.size}</span>}
+    </div>
   )
 }

@@ -1,38 +1,30 @@
-import { useState } from 'react'
-import { eur, tickets } from '../data'
-import { Badge, Button, Card, Drawer, PageHeader, RowMenu, Segmented, usePaging } from '../ui'
+import clsx from 'clsx'
+import { useSearchParams } from 'react-router-dom'
+import { PageHeader } from '../ui'
+import Catalog from './tickets/Catalog'
+import TicketTab from './tickets/TicketTab'
+import VoucherTab from './tickets/VoucherTab'
 
-type T = (typeof tickets)[number]
+const tabs = [{ id: 'gutscheine', label: 'Gutscheine' }, { id: 'tickets', label: 'Tickets' }, { id: 'arten', label: 'Arten und Preise' }] as const
 
+/**
+ * Vouchers and tickets of the tandem shop: what was sold (two lists, kept apart) and what can be sold at which price (catalog).
+ * `?open=<code>` opens one entry, e.g. from the manifest.
+ */
 export default function Tickets() {
-  const [filter, setFilter] = useState<'alle' | 'offen' | 'bald'>('alle')
-  const [open, setOpen] = useState<T | null>(null)
-  const list = tickets.filter((t) => filter === 'alle' || (filter === 'offen' ? t.status === 'offen' : t.status.includes('läuft ab')))
-  const paging = usePaging(list, filter)
+  const [params, setParams] = useSearchParams()
+  const tab = tabs.find((t) => t.id === params.get('tab'))?.id ?? 'gutscheine'
+  const openCode = params.get('open') ?? undefined
+  const go = (next: Record<string, string>) => setParams(next, { replace: true })
+  const onOpen = (code?: string) => go(code ? { tab, open: code } : { tab })
+
   return (
     <>
-      <PageHeader title="Tickets und Voucher" actions={<Button variant="primary">Ticket ausstellen</Button>} />
-      <div className="mb-4"><Segmented value={filter} onChange={setFilter} options={[{ value: 'alle', label: 'Alle' }, { value: 'offen', label: 'Noch offen' }, { value: 'bald', label: 'Laufen bald ab' }]} /></div>
-      <Card className="divide-y divide-line">
-        {paging.rows.map((t) => (
-          <div key={t.id} onClick={() => setOpen(t)} className="flex cursor-pointer flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50">
-            <div className="min-w-0 flex-1">
-              <div className="font-medium">{t.type} <span className="font-normal text-muted">· {t.id}</span></div>
-              <div className="text-sm text-muted">{t.holder} · {t.source}</div>
-            </div>
-            <Badge tone={t.status === 'offen' ? 'info' : t.status.includes('läuft ab') ? 'warn' : 'neutral'}>{t.status}</Badge>
-            <div className="w-20 text-right tabular-nums">{eur(t.price)}</div>
-            <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1">
-              {t.status === 'offen' && <Button>Für Sprungtag einlösen</Button>}
-              <RowMenu actions={[{ label: 'Details', onSelect: () => setOpen(t) }, { label: 'Gültigkeit verlängern', onSelect: () => {} }, { label: 'PDF erneut senden', onSelect: () => {} }, { label: 'Stornieren', onSelect: () => {}, danger: true }]} />
-            </div>
-          </div>
-        ))}
-        {paging.bar}
-      </Card>
-      <Drawer open={!!open} title={open?.id ?? ''} onClose={() => setOpen(null)}>
-        {open && <dl className="space-y-3 text-sm"><div><dt className="text-muted">Art</dt><dd className="font-medium">{open.type}</dd></div><div><dt className="text-muted">Inhaber</dt><dd className="font-medium">{open.holder}</dd></div><div><dt className="text-muted">Status</dt><dd className="font-medium">{open.status}</dd></div><div><dt className="text-muted">Verbuchter Ertrag</dt><dd className="font-medium">{eur(open.price)} auf Tandem</dd></div></dl>}
-      </Drawer>
+      <PageHeader title="Tickets und Voucher" />
+      <div className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
+        {tabs.map((t) => <button key={t.id} onClick={() => go({ tab: t.id })} className={clsx('shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium', tab === t.id ? 'border-brand text-brand' : 'border-transparent text-muted hover:text-ink')}>{t.label}</button>)}
+      </div>
+      {tab === 'gutscheine' ? <VoucherTab openCode={openCode} onOpen={onOpen} /> : tab === 'tickets' ? <TicketTab openCode={openCode} onOpen={onOpen} /> : <Catalog />}
     </>
   )
 }

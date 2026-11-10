@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import clsx from 'clsx'
 
 /** A QR-looking pattern from a number. Only a picture: the dummy has no camera. */
-function QrPicture({ seed }: { seed: number }) {
+export function QrPicture({ seed }: { seed: number }) {
   const cells = useMemo(() => {
     const n = 21
     let x = seed * 9301 + 49297

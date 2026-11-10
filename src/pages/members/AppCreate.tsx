@@ -3,6 +3,7 @@ import { Laptop, Link2, Printer, Scale } from 'lucide-react'
 import { useState } from 'react'
 import { members } from '../../data'
 import { useApp } from '../../state'
+import MemberPicker from '../../MemberPicker'
 import { Badge, Banner, Button, Drawer } from '../../ui'
 import { isInput, KIND_LABEL, LANGS, nameOf, type AppKind, type Application, type Channel, type FormTemplate, type Lang } from './data'
 import FormFields, { answersOf, fieldInput, missingFields } from './FormFields'
@@ -149,7 +150,7 @@ export default function AppCreate({ forms, preset, onClose, onCreate, onUpdate, 
             {existing ? (
               <div className="space-y-3">
                 {fromMember ? <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm"><b>{member?.name}</b></div>
-                  : <select value={memberId} onChange={(e) => { setMemberId(e.target.value); setVals({}) }} className={fieldInput} aria-label="Mitglied"><option value="">Mitglied wählen</option>{candidates.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>}
+                  : <MemberPicker ariaLabel="Mitglied" value={memberId} placeholder="Mitglied wählen" allow={(m) => !left(m.name)} info={(m) => typeOf(m.id).name} onChange={(id) => { setMemberId(id); setVals({}) }} />}
                 {member && <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm">Bisherige Mitgliedschaft: <b>{current}</b> <span className="text-muted">· ist bekannt und kann im Formular nicht gewählt oder geändert werden.</span></div>}
                 {kind === 'Änderung' && member && (
                   <div className="space-y-3 rounded-xl border border-line p-3">

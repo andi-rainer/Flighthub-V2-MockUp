@@ -118,7 +118,7 @@ export const SOURCES: Partial<Record<FormKind, { group: string; items: string[] 
   Neu: undefined,
   Änderung: { group: 'Mitgliederdaten', items: ['Vorname', 'Nachname', 'E-Mail', 'Geburtsdatum', 'Gewicht', 'Aktuelle Mitgliedschaft'] },
   Beendigung: { group: 'Mitgliederdaten', items: ['Vorname', 'Nachname', 'E-Mail', 'Geburtsdatum', 'Gewicht', 'Aktuelle Mitgliedschaft'] },
-  Beförderung: { group: 'Tandem-Buchung', items: ['Vorname', 'Nachname', 'E-Mail', 'Telefon', 'Gewicht', 'Flugdatum'] },
+  Beförderung: { group: 'Tandem-Buchung', items: ['Flugdatum'] },
 }
 /** Example values for the preview, by source. */
 export const SAMPLE: Record<string, string> = { Vorname: 'Anna', Nachname: 'Berger', 'E-Mail': 'anna.berger@example.at', Geburtsdatum: '14.04.1992', Gewicht: '62', 'Aktuelle Mitgliedschaft': 'Ordentlich', Flugdatum: '07.11.2026', Telefon: '+43 660 1234567' }
@@ -147,9 +147,9 @@ const rawForms: FormTemplate[] = [
     { v: 1, status: 'aktiv', since: '12.01.2026', design: D, fields: [
       p('p1', 'Beförderer und Luftfrachtführer ist der {Vereinsname}. Er führt mit dem unten genannten Tandem-Gast einen Tandem-Fallschirmsprung durch.'),
       h('t2', 'Angaben zum Tandem-Gast'),
-      f('vn', 'Vorname', 'Text', true, src('Tandem-Buchung: Vorname')), f('nn', 'Nachname', 'Text', true, src('Tandem-Buchung: Nachname')), f('g', 'Geburtsdatum', 'Datum'),
-      f('st', 'Straße und Hausnummer'), f('ort', 'PLZ und Ort'), f('tel', 'Telefon', 'Text', true, src('Tandem-Buchung: Telefon')), f('mail', 'E-Mail', 'Text', true, src('Tandem-Buchung: E-Mail')),
-      f('cm', 'Größe in cm'), f('kg', 'Gewicht in kg', 'Text', true, src('Tandem-Buchung: Gewicht')), f('en', 'Notfallkontakt Name'), f('et', 'Notfallkontakt Telefon'),
+      f('vn', 'Vorname'), f('nn', 'Nachname'), f('g', 'Geburtsdatum', 'Datum'),
+      f('st', 'Straße und Hausnummer'), f('ort', 'PLZ und Ort'), f('tel', 'Telefon'), f('mail', 'E-Mail'),
+      f('cm', 'Größe in cm'), f('kg', 'Gewicht in kg'), f('en', 'Notfallkontakt Name'), f('et', 'Notfallkontakt Telefon'),
       p('p2', 'Der Tandem-Gast erklärt seine Mitgliedschaft im {Vereinsname} als zeitlich befristetes Mitglied. Diese Mitgliedschaft ist mit keinen finanziellen Verpflichtungen verbunden.'),
       p('p3', 'Für alle Beförderungen von Personen und Gütern mit den Tandem-Fallschirmen im Eigentum und Betrieb des {Vereinsname} handelt der Verein ausschließlich als Beförderer und Luftfrachtführer.'),
       p('p4', 'Tandem-Fallschirmsprünge werden nicht gewerblich durchgeführt, sondern ausschließlich zur Mitgliederwerbung und zur Förderung des Fallschirmsports.'),

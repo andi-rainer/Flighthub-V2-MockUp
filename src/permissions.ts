@@ -40,6 +40,13 @@ export const ADMIN_FUNCTIONS = [F.CHAIRMAN, F.SECRETARY, F.TREASURER] as const
 function def<C extends string>(code: C, category: PermissionCategory, options: { sensitive?: boolean; extra?: readonly string[] } = {}) {
   return { code, category, sensitive: options.sensitive ?? false, grantedToAll: false as boolean, defaultFunctions: [...new Set<string>([...ADMIN_FUNCTIONS, ...(options.extra ?? [])])] } as const
 }
+/**
+ * A permission that makes a member a PARTICIPANT of the flying day (can be entered as pilot, can jump as sport jumper). It is granted to the
+ * functions that carry the skill, not automatically to the administrative functions: a treasurer is not a pilot because of the office.
+ */
+function capability<C extends string>(code: C, category: PermissionCategory, defaultFunctions: readonly string[]) {
+  return { code, category, sensitive: false, grantedToAll: false as boolean, defaultFunctions } as const
+}
 function everyone<C extends string>(code: C, category: PermissionCategory) {
   return { code, category, sensitive: false, grantedToAll: true as boolean, defaultFunctions: [] as string[] } as const
 }
@@ -109,8 +116,8 @@ export const PERMISSION_CATALOG = [
   def('aircraft.maintenance.manage', 'aircraft'),
   everyone('documents.view.own', 'documents'),
   everyone('documents.upload.own', 'documents'),
-  def('documents.view.all', 'documents'),
-  def('documents.approve', 'documents', { sensitive: true }),
+  def('documents.view.all', 'documents', { extra: [F.MANIFEST_COORDINATOR] }),
+  def('documents.approve', 'documents', { sensitive: true, extra: [F.MANIFEST_COORDINATOR] }),
   def('documents.definitions.manage', 'documents', { sensitive: true }),
   def('documents.library.manage', 'documents', { sensitive: true }),
   def('documents.delete', 'documents', { sensitive: true }),
@@ -130,15 +137,19 @@ export const PERMISSION_CATALOG = [
   def('afp.create', 'afp', { extra: [F.PILOT, F.SKYDIVE_PILOT, F.CHIEF_PILOT] }),
   everyone('manifest.checkin.self', 'manifest'),
   def('manifest.checkin.others', 'manifest', { extra: [F.MANIFEST_COORDINATOR] }),
+  capability('manifest.flights.pilot', 'manifest', [F.SKYDIVE_PILOT]),
+  capability('manifest.jumps.sport', 'manifest', [F.SPORT_JUMPER]),
+  capability('manifest.tandem.master', 'manifest', [F.TANDEM_MASTER]),
   def('billing.bank.manage', 'billing', { sensitive: true }),
   def('billing.statements.approve', 'billing', { sensitive: true }),
+  def('billing.periods.release', 'billing', { sensitive: true }),
   def('members.applications.decide', 'members', { sensitive: true }),
   def('members.fees.manage', 'members', { sensitive: true }),
 ] as const satisfies readonly PermissionDefinition[]
 
 export type Permission = (typeof PERMISSION_CATALOG)[number]['code']
 
-export const NEW_IN_V2: ReadonlySet<string> = new Set(['afp.view', 'afp.create', 'manifest.checkin.self', 'manifest.checkin.others', 'billing.bank.manage', 'billing.statements.approve', 'members.applications.decide', 'members.fees.manage'])
+export const NEW_IN_V2: ReadonlySet<string> = new Set(['afp.view', 'afp.create', 'manifest.checkin.self', 'manifest.checkin.others', 'manifest.flights.pilot', 'manifest.jumps.sport', 'manifest.tandem.master', 'billing.bank.manage', 'billing.statements.approve', 'billing.periods.release', 'members.applications.decide', 'members.fees.manage'])
 
 /** Permissions that only work together with another one (the editor enables them together). */
 export const PERMISSION_REQUIREMENTS: Partial<Record<Permission, readonly Permission[]>> = {
@@ -167,6 +178,7 @@ export const PERMISSION_REQUIREMENTS: Partial<Record<Permission, readonly Permis
   'vouchers.export': ['vouchers.view'],
   'billing.bank.manage': ['billing.view.all'],
   'billing.statements.approve': ['billing.view.all'],
+  'billing.periods.release': ['billing.view.all'],
   'members.applications.decide': ['members.view.all'],
   'members.fees.manage': ['members.view.all'],
 }
@@ -304,8 +316,11 @@ export const PERMISSION_LABELS: Record<string, string> = {
  "afp_create": "AFP erstellen und freigeben",
  "manifest_checkin_self": "Selbst am Platz einchecken",
  "manifest_checkin_others": "Springer einchecken",
+ "manifest_flights_pilot": "Sprungflüge fliegen (als Pilot eines Flugs eintragbar)",
+ "manifest_jumps_sport": "Als Sportspringer springen (einchecken und einteilbar)",
  "billing_bank_manage": "Bank, Belege und Kostenstellen buchen",
  "billing_statements_approve": "Kontoauszüge freigeben",
+ "billing_periods_release": "Buchungszeiträume freigeben und sperren",
  "members_applications_decide": "Anträge genehmigen oder ablehnen",
  "members_fees_manage": "Mitgliedsbeiträge und Rechnungen verwalten"
 }
