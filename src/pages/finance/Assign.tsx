@@ -12,9 +12,11 @@ import { payTarget } from '../tickets/payments'
 import LineReceipts from './LineReceipts'
 import { type Ledger } from './ledger'
 import { cents, confLabel, Dot, euros } from './parts'
+import { suggestionOf, useRules } from './ruleStore'
+import { counterCandidates } from './status'
 
 /** One part of the amount as it is edited: a target of its own. A line with one part books the whole amount. */
-interface Draft { key: number; amount: string; mode: 'konto' | 'buchung' | 'zahlung'; memberId: string; payCode: string; splits: Split[]; receiptId?: string }
+interface Draft { key: number; amount: string; mode: 'konto' | 'buchung' | 'zahlung' | 'umbuchung'; memberId: string; payCode: string; splits: Split[]; receiptId?: string; /** Transfer: the other own account and its counter booking ('' = create one). */ accountId: string; counterId: string }
 let draftKey = 1
 
 /**
@@ -26,7 +28,10 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
   const { hasAccount, vouchers, tickets, loads } = useApp()
   const accountMembers = members.filter((m) => hasAccount(m.id))
   const type = line.amount < 0 ? 'Kosten' : 'Ertrag'
-  const sug = line.suggestion?.target
+  const rules = useRules()
+  const suggestion = suggestionOf(line, ledger, rules)
+  const sug = suggestion?.target
+  const ownAccounts = ledger.accounts.filter((a) => !a.archived && a.id !== line.accountId)
   const total = Math.round(Math.abs(line.amount) * 100)
   const ccs = ledger.costCenters.filter((c) => !c.archived)
   const cats = ledger.categories.filter((c) => !c.archived && c.type === type)
@@ -38,7 +43,8 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
   ].sort((a, b) => Number(!!b.proof) - Number(!!a.proof) || Number(b.flown) - Number(a.flown))
   const defaultSplits = (): Split[] => [{ costCenterId: ccs[0].id, categoryId: cats[0]?.id ?? '', percent: 100 }]
   const draftOf = (t: SingleTarget | undefined, amount: string, receiptId?: string): Draft => ({
-    key: draftKey++, amount, receiptId, mode: t && t.kind !== 'umbuchung' && t.kind !== 'auslage' ? t.kind : (line.amount > 0 && /ÜW/.test(line.text) ? 'konto' : 'buchung'),
+    key: draftKey++, amount, receiptId, mode: t && t.kind !== 'auslage' ? t.kind : (line.amount > 0 && /ÜW/.test(line.text) ? 'konto' : 'buchung'),
+    accountId: t?.kind === 'umbuchung' ? t.accountId : '', counterId: t?.kind === 'umbuchung' ? (counterCandidates(line, t.accountId, ledger)[0]?.id ?? '') : '',
     memberId: t?.kind === 'konto' ? t.memberId : accountMembers[0].id, payCode: t?.kind === 'zahlung' ? t.code : '', splits: t?.kind === 'buchung' ? t.splits : defaultSplits(),
   })
   const likely = payables.filter((p) => p.proof && Math.round(p.price * 100) === total)
@@ -53,7 +59,7 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
   const single = drafts.length === 1
   const own = (d: Draft) => (single ? total : cents(d.amount) || 0)
   const remaining = total - drafts.reduce((n, d) => n + own(d), 0)
-  const draftValid = (d: Draft) => own(d) > 0 && (d.mode === 'konto' ? !!d.memberId : d.mode === 'zahlung' ? d.payCode !== '' : d.splits.reduce((n, s) => n + s.percent, 0) === 100 && d.splits.every((s) => s.categoryId))
+  const draftValid = (d: Draft) => own(d) > 0 && (d.mode === 'umbuchung' ? single && !!d.accountId : d.mode === 'konto' ? !!d.memberId : d.mode === 'zahlung' ? d.payCode !== '' : d.splits.reduce((n, s) => n + s.percent, 0) === 100 && d.splits.every((s) => s.categoryId))
   const valid = remaining === 0 && drafts.every(draftValid)
   const patch = (key: number, p: Partial<Draft>) => setDrafts((all) => all.map((d) => (d.key === key ? { ...d, ...p } : d)))
   const lineReceipts = ledger.receipts.filter((r) => r.lineId === line.id)
@@ -61,16 +67,23 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
   const single1 = (d: Draft): SingleTarget => {
     if (d.mode === 'konto') return { kind: 'konto', memberId: d.memberId }
     if (d.mode === 'zahlung') { const p = payables.find((x) => x.code === d.payCode)!; return payTarget(p.what, p.code, p.buyer) }
+    if (d.mode === 'umbuchung') return { kind: 'umbuchung', accountId: d.accountId, label: `Umbuchung ${line.amount < 0 ? 'auf' : 'von'} ${ledger.accountName(d.accountId)}` }
     return { kind: 'buchung', splits: d.splits }
+  }
+  const transfer = single && drafts[0].mode === 'umbuchung' ? drafts[0] : null
+  const book = () => {
+    if (transfer) ledger.bookTransferLine(line.id, transfer.accountId, transfer.counterId || undefined)
+    else ledger.assign(line.id, build())
+    onClose()
   }
   const build = (): Target => single ? single1(drafts[0]) : { kind: 'teilung', parts: drafts.map((d): Part => ({ amount: own(d) / 100, target: single1(d), receiptId: d.receiptId })) }
   const fromReceipts = () => setDrafts(lineReceipts.map((r) => draftOf(undefined, euros(Math.round(r.amount * 100)), r.id)).map((d) => ({ ...d, mode: 'buchung' as const })))
 
   return (
-    <Drawer open={!hidden} title={line.suggestion ? 'Vorschlag prüfen' : 'Zuordnen'} size={single ? 'md' : 'xl'} onClose={onClose} footer={<Button variant="primary" size="lg" className="w-full" disabled={!valid} onClick={() => { ledger.assign(line.id, build()); onClose() }}>{line.suggestion ? 'Bestätigen und buchen' : 'Zuordnen und buchen'}</Button>}>
+    <Drawer open={!hidden} title={suggestion ? 'Vorschlag prüfen' : 'Zuordnen'} size={single ? 'md' : 'xl'} onClose={onClose} footer={<Button variant="primary" size="lg" className="w-full" disabled={!valid} onClick={book}>{transfer ? (transfer.counterId ? 'Umbuchung verknüpfen und buchen' : 'Umbuchung mit Gegenbuchung buchen') : suggestion ? 'Bestätigen und buchen' : 'Zuordnen und buchen'}</Button>}>
       <div className="space-y-4">
         <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3"><div className="text-sm">{line.text}</div><div className="shrink-0 text-lg font-semibold tabular-nums">{eur(line.amount)}</div></div>
-        {line.suggestion && <div className="flex items-center gap-1.5 text-xs text-muted"><Dot c={line.suggestion.confidence} /><span>{confLabel(line.suggestion.confidence)} · {line.suggestion.why}</span></div>}
+        {suggestion && <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted"><Dot c={suggestion.confidence} /><span>{confLabel(suggestion.confidence)} · {suggestion.why}</span>{suggestion.rule && !suggestion.why.startsWith('Regel') && <Badge>Regel „{suggestion.rule.name}“</Badge>}</div>}
         {!single && <div className={clsx('flex items-center justify-between rounded-lg px-3 py-1.5 text-sm font-medium', remaining === 0 ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-amber-900')}><span>{remaining === 0 ? 'Alles verteilt' : remaining > 0 ? 'Noch zu verteilen' : 'Zu viel verteilt'}</span><span className="tabular-nums">{remaining === 0 ? eur(Math.abs(line.amount)) : eur(Math.abs(remaining) / 100)}</span></div>}
 
         {drafts.map((d, i) => {
@@ -86,8 +99,11 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
                   <button aria-label={`Teil ${i + 1} entfernen`} onClick={() => setDrafts((all) => all.filter((x) => x.key !== d.key))} className="grid h-9 w-9 place-items-center rounded-lg text-muted hover:bg-slate-100"><X size={15} /></button>
                 </div>
               )}
-              <Segmented<Draft['mode']> value={d.mode} onChange={(mode) => patch(d.key, { mode })} options={[{ value: 'konto', label: 'Betriebskonto' }, { value: 'buchung', label: 'Kostenstelle' }, { value: 'zahlung', label: 'Gutschein / Ticket' }]} />
-              {d.mode === 'zahlung' ? (
+              <Segmented<Draft['mode']> value={d.mode} onChange={(mode) => patch(d.key, { mode })} options={[{ value: 'konto', label: 'Betriebskonto' }, { value: 'buchung', label: 'Kostenstelle' }, { value: 'zahlung', label: 'Gutschein / Ticket' }, ...(single ? [{ value: 'umbuchung' as const, label: 'Eigenes Konto' }] : [])]} />
+              {d.mode === 'umbuchung' ? (
+                <TransferPicker line={line} ledger={ledger} accounts={ownAccounts} accountId={d.accountId} counterId={d.counterId}
+                  onChange={(accountId, counterId) => patch(d.key, { accountId, counterId })} />
+              ) : d.mode === 'zahlung' ? (
                 <PayablePicker key={d.key} payables={payables.filter((p) => !taken.includes(p.code))} value={d.payCode} single={single} total={total}
                   title={line.amount > 0 ? 'Welche Zahlung ist das?' : 'Welche Erstattung ist das?'} empty={line.amount > 0 ? 'Keine offene Zahlung bei Gutscheinen und Tickets.' : 'Keine offene Erstattung bei Tickets.'}
                   onPick={(p) => patch(d.key, { payCode: p.code, ...(single ? {} : { amount: euros(Math.round(p.price * 100)) }) })} />
@@ -102,18 +118,18 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
           )
         })}
 
-        <div className="flex flex-wrap gap-2">
+        {!transfer && <div className="flex flex-wrap gap-2">
           <Button onClick={() => setDrafts((prev) => {
             const base = prev.length === 1 ? [{ ...prev[0], amount: euros(total) }] : prev
             const rest = total - base.reduce((n, d) => n + (cents(d.amount) || 0), 0)
             return [...base, draftOf(undefined, rest > 0 ? euros(rest) : '')]
           })}><Plus size={14} /> Betrag aufteilen</Button>
           {lineReceipts.length > 1 && <Button onClick={fromReceipts}>Nach Belegen aufteilen ({lineReceipts.length})</Button>}
-        </div>
+        </div>}
 
-        <div className="border-t border-line pt-3"><LineReceipts line={line} ledger={ledger} booked={false} onDialog={setHidden} /></div>
+        {!transfer && <div className="border-t border-line pt-3"><LineReceipts line={line} ledger={ledger} booked={false} onDialog={setHidden} /></div>}
 
-        <div className="border-t border-line pt-3 text-sm">
+        {!transfer && <div className="border-t border-line pt-3 text-sm">
           {adding ? (
             <div className="flex gap-2"><input autoFocus value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={adding === 'cc' ? 'Name der Kostenstelle' : `Name der ${type === 'Kosten' ? 'Kostenart' : 'Ertragsart'}`} className={`${field} w-full`} />
               <Button variant="primary" disabled={!newName.trim()} onClick={() => { adding === 'cc' ? ledger.addCostCenter(newName.trim(), 'Allgemein') : ledger.addCategory(newName.trim(), type, false); setNewName(''); setAdding(null) }}>Anlegen</Button>
@@ -121,7 +137,7 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
           ) : (
             <div className="flex gap-4 text-brand"><button onClick={() => setAdding('cc')}>+ Neue Kostenstelle</button><button onClick={() => setAdding('cat')}>+ Neue {type === 'Kosten' ? 'Kostenart' : 'Ertragsart'}</button></div>
           )}
-        </div>
+        </div>}
       </div>
     </Drawer>
   )
@@ -197,6 +213,42 @@ function PayablePicker({ payables, value, single, total, title, empty, onPick }:
       {payables.length > 0 && shown.length === 0 && <p className="rounded-lg border border-dashed border-line px-3 py-3 text-muted">{words.length > 0 ? 'Nichts gefunden.' : 'Kein offener Eintrag mit diesem Betrag.'}</p>}
       {hidden > 0 && <button onClick={() => setAll(true)} className="text-xs font-medium text-brand">Alle anzeigen ({hidden} weitere)</button>}
       {all && !words.length && <button onClick={() => setAll(false)} className="text-xs font-medium text-brand">Weniger anzeigen</button>}
+    </div>
+  )
+}
+
+/**
+ * [Entwurf] Money between the club's own accounts (ATM withdrawal into the Kassa, deposit on the savings book): pick the other account, then
+ * link its counter booking if it is already there, or let the counter booking be created. Never booked twice.
+ */
+function TransferPicker({ line, ledger, accounts, accountId, counterId, onChange }: {
+  line: BankLine; ledger: Ledger; accounts: { id: string; name: string }[]; accountId: string; counterId: string; onChange: (accountId: string, counterId: string) => void
+}) {
+  const candidates = accountId ? counterCandidates(line, accountId, ledger) : []
+  return (
+    <div className="space-y-2 text-sm">
+      <label className="block">{line.amount < 0 ? 'Geld geht auf' : 'Geld kommt von'}
+        <select aria-label="Eigenes Konto" value={accountId} onChange={(e) => onChange(e.target.value, counterCandidates(line, e.target.value, ledger)[0]?.id ?? '')} className={`${field} mt-1 w-full`}>
+          <option value="">Konto wählen</option>
+          {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} · {eur(ledger.balanceOf(a.id))}</option>)}
+        </select>
+      </label>
+      {accountId && (
+        <div className="space-y-1.5">
+          <div className="font-medium">Gegenbuchung auf {ledger.accountName(accountId)}</div>
+          {candidates.map((c) => (
+            <label key={c.id} className={clsx('flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-1.5 hover:bg-slate-50', counterId === c.id ? 'border-brand bg-slate-50' : 'border-line')}>
+              <input type="radio" checked={counterId === c.id} onChange={() => onChange(accountId, c.id)} />
+              <span className="min-w-0 flex-1"><span className="block truncate">{c.bookingText ?? c.text}</span><span className="text-xs text-muted">{dmy(c.date)} · schon erfasst, verknüpfen</span></span>
+              <span className={clsx('font-medium tabular-nums', c.amount < 0 ? 'text-bad' : 'text-ok')}>{eur(c.amount)}</span>
+            </label>
+          ))}
+          <label className={clsx('flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-1.5 hover:bg-slate-50', counterId === '' ? 'border-brand bg-slate-50' : 'border-line')}>
+            <input type="radio" checked={counterId === ''} onChange={() => onChange(accountId, '')} />
+            <span className="min-w-0 flex-1">Gegenbuchung anlegen<span className="block text-xs text-muted">{dmy(line.date)} · {eur(-line.amount)} auf {ledger.accountName(accountId)}</span></span>
+          </label>
+        </div>
+      )}
     </div>
   )
 }

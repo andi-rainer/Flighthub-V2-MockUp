@@ -33,7 +33,7 @@ export const captureOf = (r: { name: string; supplier: string; number?: string; 
   ({ file: r.name, supplier: r.supplier, number: r.number ?? '', date: r.date, total: show(r.amount), liters: r.fuel ? show(r.fuel.liters, 1) : '', perLiter: r.fuel ? show(r.fuel.perLiter, 3) : '', read: false })
 
 /** The dummy of the reading: a plausible result from the name of the file. The real project sends the file to a language model. */
-function fakeRead(name: string, fuel: boolean): Captured {
+export function fakeRead(name: string, fuel: boolean): Captured {
   const h = [...name].reduce((n, ch) => n + ch.charCodeAt(0), 0)
   const suppliers = ['Shell Austria', 'Tankstelle LOLW', 'OMV Aviation']
   const liters = 40 + (h % 80)
@@ -49,8 +49,9 @@ const stamp = () => { const d = new Date(); return `${TODAY_ISO}-${String(d.getH
  * phone: the computer shows a QR code, the phone opens a scanner in its browser and the finished scan lands here. A language model reads
  * supplier, date, sum (and liters and price per liter for fuel); the person only checks the numbers.
  */
-export function ReceiptCapture({ value, onChange, fuel, liters, onUseLiters }: {
+export function ReceiptCapture({ value, onChange, fuel, liters, onUseLiters, suppliers }: {
   value: Captured; onChange: (c: Captured) => void; fuel: boolean
+  /** Known suppliers, offered while typing. */ suppliers?: string[]
   /** The liters the entry itself names (Bordbuch): the reading is compared to them. */ liters?: number
   onUseLiters?: (n: number) => void
 }) {
@@ -92,7 +93,7 @@ export function ReceiptCapture({ value, onChange, fuel, liters, onUseLiters }: {
       </div>
       {!reading && (
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <Field label="Lieferant" className="col-span-2"><input aria-label="Lieferant" value={value.supplier} onChange={(e) => set({ supplier: e.target.value })} className={`${field} w-full`} /></Field>
+          <Field label="Lieferant" className="col-span-2"><input aria-label="Lieferant" list={suppliers ? 'capture-suppliers' : undefined} value={value.supplier} onChange={(e) => set({ supplier: e.target.value })} className={`${field} w-full`} />{suppliers && <datalist id="capture-suppliers">{suppliers.map((s) => <option key={s} value={s} />)}</datalist>}</Field>
           <Field label="Belegnummer"><input aria-label="Belegnummer" value={value.number} onChange={(e) => set({ number: e.target.value })} className={`${field} w-full`} /></Field>
           <Field label="Belegdatum"><input type="date" aria-label="Belegdatum" max={TODAY_ISO} value={value.date} onChange={(e) => set({ date: e.target.value })} className={`${field} w-full`} /></Field>
           <Field label="Summe (€)"><input aria-label="Summe" inputMode="decimal" value={value.total} onChange={(e) => setTotal(e.target.value)} className={`${field} w-full text-right tabular-nums`} /></Field>

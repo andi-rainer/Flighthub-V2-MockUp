@@ -14,7 +14,7 @@ export function useFeeActions() {
   const nextNo = () => `RE-2026-${String(150 + fees.filter((f) => f.invoice).length).padStart(4, '0')}`
   const send = (ids: string[], kind: Doc['kind']) => {
     setFees(fees.map((f, i) => (ids.includes(f.id) ? { ...f, state: kind === 'Rechnung' ? 'rechnung' : 'ueberfaellig', invoice: f.invoice ?? `RE-2026-${String(150 + i).padStart(4, '0')}` } : f)))
-    return `${ids.length} ${kind === 'Rechnung' ? 'Rechnung(en)' : 'Zahlungsaufforderung(en)'} versendet. Die Zahlung ordnest du in Finanzen unter Bank und Belege zu.`
+    return `${ids.length} ${kind === 'Rechnung' ? 'Rechnung(en)' : 'Zahlungsaufforderung(en)'} versendet. Die Zahlung ordnest du in Finanzen unter Buchungen zu.`
   }
   return { send, nextNo }
 }

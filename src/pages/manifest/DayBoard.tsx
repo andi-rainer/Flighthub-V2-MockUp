@@ -9,6 +9,7 @@ import { toAbs } from '../../dates'
 import { flightNo, sportJumper, useApp, type Load } from '../../state'
 import { Badge, Banner, Button, Card, Drawer, PageHeader, RowMenu, Segmented } from '../../ui'
 import Closing from '../Closing'
+import { DayReportLink } from '../finance/DayReport'
 import Bookings from './Bookings'
 import { capacityOf, dayName, fullName, hm, minutes, missingDuties, perPerson, sportPriceOn, tandemJumper, windowAt, windowLabel, withShifts, dayHours, type DayStatus, type ManifestDay } from './data'
 import DutyFields from './DutyFields'
@@ -142,6 +143,8 @@ function Board({ day }: { day: ManifestDay }) {
     const landed = dayLoads.filter((l) => l.status === 'gelandet')
     return (
       <Closing
+        day={day}
+        flights={landed.length}
         jumped={perPerson(landed.flatMap((l) => l.jumpers), sportPrice)}
         notFlown={[...present.filter((j) => j.kind === 'tandem' || flown(j.id) === 0), ...expected.map(tandemJumper), ...dayLoads.filter((l) => l.status !== 'gelandet').flatMap((l) => l.jumpers.filter((j) => !j.noShow))].filter((j, i, all) => all.findIndex((x) => x.id === j.id) === i)}
         onBack={() => setMode('betrieb')}
@@ -212,7 +215,7 @@ function Board({ day }: { day: ManifestDay }) {
       {day.status === 'geplant' && <div className="mb-4"><Banner>Dieser Tag läuft noch nicht. Mit „Tag starten“ können Sportspringer einchecken.</Banner></div>}
       {settings.roles.length > 0 && <div className="mb-4"><DutySummary day={day} roles={settings.roles} onEdit={mayEditDay && open ? () => setDialog('duties') : undefined} /></div>}
       {!mayAssign && <div className="mb-4"><Banner>Du siehst das Manifest lesend. Springer einsetzen und Flüge steuern darf das Manifest-Team.</Banner></div>}
-      {day.status === 'abgeschlossen' && day.done && <div className="mb-4"><Banner>{day.done.flights} Flüge, {day.done.jumps} Sprünge. Der Tag ist abgeschlossen.</Banner></div>}
+      {day.status === 'abgeschlossen' && day.done && <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><Banner>{day.done.flights} Flüge, {day.done.jumps} Sprünge. Der Tag ist abgeschlossen.</Banner><DayReportLink dayId={day.id} /></div>}
       {hasTandem && (
         <div className="mb-4 flex items-start justify-between gap-x-4">
           <Segmented value={tab} onChange={(v) => setParams(v === 'tandem' ? { tab: v } : {}, { replace: true })} options={[{ value: 'fluege', label: 'Flüge' }, { value: 'tandem', label: `Tandem-Buchungen (${mine.length})` }]} />

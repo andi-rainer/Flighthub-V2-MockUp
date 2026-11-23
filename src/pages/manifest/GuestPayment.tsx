@@ -33,7 +33,7 @@ type Way = 'nachweis' | 'eingang'
  * bank line later (Finanzen > Bank, or the ticket itself). The second way records who checked it, it does not book anything.
  */
 export function GuestPayDrawer({ booking, onClose }: { booking: TandemBooking; onClose: () => void }) {
-  const { vouchers, tickets, setVouchers, setTickets } = useApp()
+  const { vouchers, tickets, setVouchers, setTickets, ledger } = useApp()
   const { guarded } = useSession()
   const actor = useActor()
   const book = useBookPayment()
@@ -71,6 +71,7 @@ export function GuestPayDrawer({ booking, onClose }: { booking: TandemBooking; o
         ) : (
           <div className="space-y-3">
             <PaymentFields value={choice} onChange={setChoice} amount={item.price} hint={pay.code} />
+            {choice.mode === 'cash' && <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs"><span className="text-muted">Kassa nach der Buchung</span><span className="tabular-nums"><span className="text-muted">{eur(ledger.cash)} →</span> <b>{eur(ledger.cash + item.price)}</b></span></div>}
             <Button variant="primary" size="lg" className="w-full" disabled={!payReady(choice)} onClick={collect}>{payConfirm(choice, item.price)}</Button>
           </div>
         )}

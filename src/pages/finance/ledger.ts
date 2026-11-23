@@ -3,6 +3,7 @@ import {
   AUSLAGE_ID, bankLines, CASH_ID, eur, historyDone, historyLines, historyReceipts, incomeDone, incomeLines, initialCategories, initialCostCenters, initialMoneyAccounts, initialReceipts, initialReleased, members,
   type BankLine, type Category, type CostCenter, type MoneyAccount, type Receipt, type Released, type SingleTarget, type Split, type Target,
 } from '../../data'
+import { countedSum, seedCounts, type CashCount, type DayReport, type DayReportLine } from './cashDocs'
 
 /** A voucher or ticket was paid (amount > 0) or refunded (amount < 0): by a bank line that was assigned, or by cash. */
 export interface PaymentEvent { code: string; amount: number; method: 'cash' | 'bank'; /** "dd.MM." */ date: string; lineId: string; by: string }
@@ -17,9 +18,28 @@ export const monthOf = (iso: string) => iso.slice(0, 7)
 /** Why a booking has no receipt (shared with the Bordbuch). */
 export const NO_RECEIPT_REASONS = ['Beleg kommt später', 'Beleg verloren', 'Vereinstankstelle, kein Beleg', 'Barzahlung ohne Beleg', 'Sonstiges'] as const
 /** A new receipt: the file AND its data. */
-export interface NewReceipt { file: string; supplier: string; number: string; date: string; amount: number; note?: string; lineId?: string; splits?: Split[]; fuel?: { liters: number; perLiter: number }; source?: Receipt['source'] }
-export interface NoReceipt { reason: string; by: string; /** "dd.MM." */ at: string }
-export interface Entry { date: string; text: string; amount: number; reversed?: boolean; storno?: boolean; /** The invoice behind it (an Auslage): the account links to it. */ receiptId?: string }
+export interface NewReceipt {
+  file: string; supplier: string; number: string; date: string; amount: number; note?: string; lineId?: string; splits?: Split[]; fuel?: { liters: number; perLiter: number }; source?: Receipt['source']
+  /** Zahlungsziel (ISO). */ due?: string
+  /** Paid in cash from this money account (Kassa): the line is created with the receipt, booked at once when `splits` are given. */ cashAccountId?: string
+}
+/** Eigenbeleg: a document the club writes itself for a booking without a receipt (who got the money, what for). The exception stays. */
+export interface OwnReceipt { no: string; payee: string; purpose: string; /** ISO */ date: string; amount: number; file: string }
+export interface NoReceipt { reason: string; by: string; /** "dd.MM." */ at: string; own?: OwnReceipt }
+/** Where a booking of a Betriebskonto comes from: the account links to it, and the source links back. `lineId` is the booking on a money account (bank, Kassa). */
+export interface EntrySource { kind: 'flug' | 'sprungtag' | 'bank' | 'kassa' | 'auslage' | 'beitrag'; lineId?: string }
+export interface Entry { date: string; text: string; amount: number; reversed?: boolean; storno?: boolean; /** The invoice behind it (an Auslage): the account links to it. */ receiptId?: string; source?: EntrySource }
+/** [Entwurf] Limits of the Betriebskonten, set by the treasurer: `remindBelow` = Offene Posten from this balance down; `lowBelow` = the member is warned below this balance. */
+export interface AccountRules { remindBelow: number; lowBelow: number }
+/** A reminder sent to a member (Zahlungserinnerung). */
+export interface Reminder { /** ISO */ at: string; by: string; count: number }
+export type StatementState = 'entwurf' | 'freigabe' | 'versendet'
+/** The month-end statements of all members: drafted, put up for approval, sent. */
+export interface MonthStatement { state: StatementState; /** ISO, when sent */ at?: string; by?: string }
+/** A member says money is on its way (a transfer) or was handed over (cash): the treasurer matches it. */
+export interface Announcement { id: string; memberId: string; amount: number; kind: 'ueberweisung' | 'bar'; /** ISO */ date: string; note?: string; status: 'offen' | 'erledigt' }
+/** A membership fee paid: by cash (Kassa) or by a bank line. */
+export interface FeePayment { method: 'bar' | 'bank'; lineId: string; /** ISO */ at: string }
 /** A change to a booking after it was booked. */
 export interface LogEntry { at: string; by: string; text: string }
 /** Where an amount of a booking or an invoice is coded: always positive. */
@@ -84,19 +104,53 @@ export interface Ledger {
   addLine: (l: { accountId: string; date: string; text: string; amount: number }) => void
   /** Money moves from one account of the club to another: two postings. */
   transfer: (t: { from: string; to: string; amount: number; date: string; text?: string }) => void
+  /**
+   * A line that is money between the club's own accounts (ATM withdrawal into the Kassa, deposit on the savings book): booked as a transfer and
+   * linked to its counter booking on the other account. `counterId`: the counter booking is already there; none: it is created.
+   */
+  bookTransferLine: (lineId: string, accountId: string, counterId?: string) => void
+  /** A short message at the bottom of the page. */
+  notify: (message: string) => void
+  /** [Entwurf] The day-closing reports (Tagesabschluss-Beleg) of closed Sprungtage: each is the receipt of the Kassa booking of that day. */
+  dayReports: DayReport[]
+  /**
+   * Closes a Sprungtag: charges the Betriebskonten, credits the cash received, books the cash of the day as ONE Kassa line split on the members
+   * and links the report to it as its receipt. Guests who paid by ticket are booked one by one before (`bookCash`).
+   */
+  closeDay: (c: { dayId: string; date: string; aircraft: string; flights: number; jumps: number; lines: DayReportLine[]; by: string }) => DayReport
+  /** [Entwurf] Cash counts (Zählprotokolle), newest first. */
+  counts: CashCount[]
+  /** Counts a cash account: Soll is the balance in the books, Ist the pieces; a difference becomes a marked booking (exception with reason, person, day). */
+  countCash: (c: { accountId: string; date: string; pieces: Record<string, number>; reason?: string; by: string }) => void
   addAccount: (a: Omit<MoneyAccount, 'id'>) => void
   patchAccount: (id: string, p: Partial<MoneyAccount>) => void
   release: (month: string, by: string) => void
   reopen: (month: string, by: string) => void
   /** `date` is the day the money came in (ISO), it may be days before the booking. Default: today. */
   cashDeposit: (memberId: string, amount: number, text?: string, date?: string) => void
+  accountRules: AccountRules
+  setAccountRules: (r: AccountRules) => void
+  reminders: Record<string, Reminder>
+  /** The treasurer sent a Zahlungserinnerung to these members. */
+  remind: (memberIds: string[], by: string) => void
+  statements: Record<string, MonthStatement>
+  setStatement: (month: string, state: StatementState, by: string) => void
+  announcements: Announcement[]
+  announce: (a: Omit<Announcement, 'id' | 'status'>) => void
+  resolveAnnouncement: (id: string) => void
+  feePayments: Record<string, FeePayment>
+  /** A membership fee is paid: cash is booked in the Kassa, a transfer is a bank line assigned to the fee; both are booked as income at once. */
+  payFee: (p: { feeId: string; person: string; invoice?: string; amount: number; method: 'bar' | 'bank'; lineId?: string; dateIso: string }) => void
   charge: (memberId: string, amount: number, text: string) => void
-  storno: (memberId: string, index: number) => void
+  /** A counter booking. A cash deposit reverses its Kassa booking, a transfer goes back to the open bank lines. */
+  storno: (memberId: string, index: number, reason?: string) => void
   /** Cash that came in (amount > 0) or went out for a voucher or ticket: a cash posting with its date, the cash box moves. */
   bookCash: (target: PaymentTarget, amount: number, dateIso: string, by: string) => void
   linkReceipt: (receiptId: string, lineId: string) => void
   unlinkReceipt: (receiptId: string) => void
   markNoReceipt: (lineId: string, reason: string, by: string) => void
+  /** The exception with an Eigenbeleg as its document. */
+  markOwnReceipt: (lineId: string, reason: string, by: string, own: OwnReceipt) => void
   clearNoReceipt: (lineId: string) => void
   /** Returns the id of the new receipt. */
   createReceipt: (r: NewReceipt) => string
@@ -132,9 +186,14 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
   const [balances, setBalances] = useState<Record<string, number>>(() => Object.fromEntries(members.map((m) => [m.id, m.balance])))
   const [history, setHistory] = useState<Record<string, Entry[]>>(() =>
     Object.fromEntries(members.map((m) => [m.id, [
-      { date: '31.10.', text: 'Sprungtag: 1 Sprung', amount: -28 },
-      { date: '24.10.', text: 'Einzahlung bar', amount: 100 },
+      { date: '31.10.', text: 'Sprungtag: 1 Sprung', amount: -28, source: { kind: 'sprungtag' } },
+      { date: '24.10.', text: 'Einzahlung bar', amount: 100, source: { kind: 'kassa' } },
     ]])))
+  const [accountRules, setAccountRules] = useState<AccountRules>({ remindBelow: -100, lowBelow: 20 })
+  const [reminders, setReminders] = useState<Record<string, Reminder>>({ m4: { at: '2026-11-02', by: 'Eva Steiner', count: 1 } })
+  const [statements, setStatements] = useState<Record<string, MonthStatement>>({ '2026-09': { state: 'versendet', at: '2026-10-07', by: 'Eva Steiner' }, '2026-10': { state: 'entwurf' } })
+  const [announcements, setAnnouncements] = useState<Announcement[]>([{ id: 'an1', memberId: 'm1', amount: 150, kind: 'ueberweisung', date: '2026-11-04', note: 'für das Sprungwochenende', status: 'offen' }])
+  const [feePayments, setFeePayments] = useState<Record<string, FeePayment>>({})
   const [receipts, setReceipts] = useState<Receipt[]>([...initialReceipts, ...historyReceipts])
   const [exempt, setExempt] = useState<Record<string, NoReceipt>>({})
   const dropExempt = (lineId?: string) => lineId && setExempt((e) => { const { [lineId]: _gone, ...rest } = e; return rest })
@@ -144,6 +203,8 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
   const [released, setReleased] = useState<Record<string, Released>>(initialReleased)
   const [log, setLog] = useState<Record<string, LogEntry[]>>({})
   const [expenses, setExpenses] = useState<ExpenseRequest[]>(seedExpenses)
+  const [dayReports, setDayReports] = useState<DayReport[]>([])
+  const [counts, setCounts] = useState<CashCount[]>(seedCounts)
   const [toast, setToast] = useState<string | null>(null)
 
   const say = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3500) }
@@ -190,7 +251,7 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
       for (const c of credits) n[c.memberId] = (n[c.memberId] ?? 0) + c.amount
       return n
     })
-    for (const c of credits) addHistory(c.memberId, { date: dmOf(c.line.date), text: `Überweisung zugewiesen: ${c.line.text}`, amount: c.amount })
+    for (const c of credits) addHistory(c.memberId, { date: dmOf(c.line.date), text: `Überweisung zugewiesen: ${c.line.text}`, amount: c.amount, source: { kind: 'bank', lineId: c.line.id } })
     for (const p of work) {
       if (p.target.kind === 'zahlung') onPayment?.({ code: p.target.code, amount: p.amount, method: 'bank', date: dmOf(p.line.date), lineId: p.line.id, by: 'Finanzen' })
     }
@@ -222,12 +283,52 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
       setLines((ls) => [{ id: lineId, date, text: `Auslage ${who}: ${what}`, amount: -receipt.amount, accountId: AUSLAGE_ID, needsReceipt: true }, ...ls])
       setDone((d) => ({ ...d, [lineId]: { kind: 'auslage', memberId, splits } }))
       setBalances((b) => ({ ...b, [memberId]: (b[memberId] ?? 0) + receipt.amount }))
-      addHistory(memberId, { date: dmOf(date), text: `Auslage: ${what}`, amount: receipt.amount, receiptId: rid })
+      addHistory(memberId, { date: dmOf(date), text: `Auslage: ${what}`, amount: receipt.amount, receiptId: rid, source: { kind: 'auslage', lineId } })
       say(`Auslage gebucht: ${eur(receipt.amount)} · ${who} gutgeschrieben`)
       return rid
     }
 
   return {
+    accountRules, setAccountRules, reminders, statements, announcements, feePayments, dayReports, counts,
+    closeDay: (c) => {
+      const date = postingDate(c.date), dm = dmOf(c.date)
+      const round = (n: number) => Math.round(n * 100) / 100
+      const cashParts = c.lines.filter((l) => !l.ownLine && l.cash > 0)
+      const total = round(cashParts.reduce((n, l) => n + l.cash, 0))
+      const id = newId('ta'), number = `TA-${c.date}`
+      let cashLineId: string | undefined, receiptId: string | undefined
+      if (total > 0) {
+        const parts = cashParts.map((l) => ({ amount: l.cash, target: l.memberId ? { kind: 'konto' as const, memberId: l.memberId } : { kind: 'buchung' as const, splits: [{ costCenterId: 'cc-tandem', categoryId: 'e-tandem', percent: 100 }] } }))
+        cashLineId = post({ date, text: `Tageskasse Sprungtag ${dm}`, amount: total, accountId: CASH_ID, needsReceipt: true }, parts.length === 1 ? parts[0].target : { kind: 'teilung', parts })
+        receiptId = newId('r')
+        setReceipts((rs) => [{ id: receiptId!, name: `Tagesabschluss-${c.date}.pdf`, supplier: `Sprungtag ${dm}`, number, amount: total, date: c.date, source: 'Kassa', note: 'Tagesabschluss-Beleg', lineId: cashLineId }, ...rs])
+      }
+      for (const l of c.lines) {
+        if (!l.memberId) continue
+        const m = l.memberId
+        setBalances((b) => ({ ...b, [m]: (b[m] ?? 0) - l.price + l.cash }))
+        addHistory(m, { date: dm, text: `Sprungtag ${dm}: ${l.what}`, amount: -l.price, source: { kind: 'sprungtag' } })
+        if (l.cash > 0) addHistory(m, { date: dm, text: `Einzahlung bar (Sprungtag ${dm})`, amount: l.cash, source: { kind: 'kassa', lineId: cashLineId } })
+      }
+      const report: DayReport = { id, number, dayId: c.dayId, date: c.date, aircraft: c.aircraft, flights: c.flights, jumps: c.jumps, by: c.by, at: TODAY, lines: c.lines, cashLineId, receiptId }
+      setDayReports((r) => [report, ...r])
+      say(total > 0 ? `Tag abgeschlossen: ${eur(total)} in die Kassa gebucht, Tagesabschluss-Beleg ${number}` : `Tag abgeschlossen, Tagesabschluss-Beleg ${number}`)
+      return report
+    },
+    countCash: ({ accountId, date, pieces, reason, by }) => {
+      const counted = countedSum(pieces)
+      const expected = Math.round(balanceOf(accountId) * 100) / 100
+      const diff = Math.round((counted - expected) * 100) / 100
+      let lineId: string | undefined
+      if (diff !== 0) {
+        lineId = newId('k')
+        const lid = lineId
+        setLines((ls) => [{ id: lid, date: postingDate(date), text: `Kassendifferenz bei Zählung am ${dmOf(date)}: Soll ${eur(expected)}, Ist ${eur(counted)}`, amount: diff, accountId, needsReceipt: true }, ...ls])
+        setExempt((e) => ({ ...e, [lid]: { reason: `Kassendifferenz: ${reason ?? 'ohne Angabe'}`, by, at: dmOf(TODAY) } }))
+      }
+      setCounts((cs) => [{ id: newId('cnt'), accountId, date, by, expected, counted, pieces, reason, lineId }, ...cs])
+      say(diff === 0 ? `${accountName(accountId)} gezählt: ${eur(counted)}, stimmt mit den Buchungen überein` : `${accountName(accountId)} gezählt: Differenz ${eur(diff)} gebucht, bitte einer Kostenstelle zuordnen`)
+    },
     lines, done, balances, cash: balanceOf(CASH_ID), history, receipts, exempt, costCenters, categories, accounts, released, log, expenses, toast, label, kindOf, balanceOf, accountName, isLocked,
     codingOfLine: (l) => targetCoding(done[l.id], Math.abs(l.amount)),
     codingOfReceipt: (r) => {
@@ -268,6 +369,20 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
       post({ date, text: `${text} von ${accountName(t.from)}`, amount: t.amount, accountId: t.to, needsReceipt: false }, { kind: 'umbuchung', accountId: t.from, label: `Umbuchung von ${accountName(t.from)}` })
       say(`Umgebucht: ${eur(t.amount)} von ${accountName(t.from)} auf ${accountName(t.to)}`)
     },
+    bookTransferLine: (lineId, accountId, counterId) => {
+      const line = lines.find((l) => l.id === lineId)
+      if (!line) return
+      const out = line.amount < 0
+      const cid = counterId ?? newId('k')
+      if (!counterId) setLines((ls) => [{ id: cid, date: postingDate(line.date), text: `Gegenbuchung: ${line.bookingText ?? line.text}`, amount: -line.amount, accountId, needsReceipt: false }, ...ls])
+      setDone((d) => ({
+        ...d,
+        [lineId]: { kind: 'umbuchung', accountId, lineId: cid, label: `Umbuchung ${out ? 'auf' : 'von'} ${accountName(accountId)}` },
+        [cid]: { kind: 'umbuchung', accountId: line.accountId, lineId, label: `Umbuchung ${out ? 'von' : 'auf'} ${accountName(line.accountId)}` },
+      }))
+      say(`Umbuchung gebucht: ${eur(Math.abs(line.amount))} ${out ? 'von' : 'auf'} ${accountName(line.accountId)} ${out ? 'auf' : 'von'} ${accountName(accountId)}${counterId ? ', mit der Gegenbuchung verknüpft' : ', Gegenbuchung angelegt'}`)
+    },
+    notify: (m) => say(m),
     addAccount: (a) => { setAccounts((x) => [...x, { ...a, id: newId('acc') }]); say(`Konto angelegt: ${a.name}`) },
     patchAccount: (id, p) => setAccounts((x) => x.map((a) => (a.id === id ? { ...a, ...p } : a))),
     release: (month, by) => { setReleased((r) => ({ ...r, [month]: { by, at: TODAY } })); say('Zeitraum freigegeben, die Buchungen sind gesperrt') },
@@ -281,20 +396,49 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
       const booking = text?.trim() || 'Einzahlung bar' // optional text, default as before
       const when = postingDate(date)
       setBalances((b) => ({ ...b, [memberId]: (b[memberId] ?? 0) + amount }))
-      post({ date: when, text: `${booking}: ${members.find((m) => m.id === memberId)?.name}`, amount, accountId: CASH_ID, needsReceipt: false }, { kind: 'konto', memberId })
-      addHistory(memberId, { date: dmOf(when), text: booking, amount })
+      const lineId = post({ date: when, text: `${booking}: ${members.find((m) => m.id === memberId)?.name}`, amount, accountId: CASH_ID, needsReceipt: false }, { kind: 'konto', memberId })
+      addHistory(memberId, { date: dmOf(when), text: booking, amount, source: { kind: 'kassa', lineId } })
       say(`Bar eingezahlt${when === TODAY ? '' : ` (${dmOf(when)})`}: ${eur(amount)} auf Betriebskonto ${members.find((m) => m.id === memberId)?.name}`)
     },
     charge: (memberId, amount, text) => {
       setBalances((b) => ({ ...b, [memberId]: (b[memberId] ?? 0) - amount }))
-      addHistory(memberId, { date: dmOf(TODAY), text, amount: -amount })
+      addHistory(memberId, { date: dmOf(TODAY), text, amount: -amount, source: { kind: 'flug' } })
     },
-    storno: (memberId, index) => {
+    storno: (memberId, index, reason) => {
       const e = history[memberId]?.[index]
       if (!e || e.reversed || e.storno) return
+      const why = reason?.trim() ? ` (${reason.trim()})` : ''
+      const who = members.find((m) => m.id === memberId)?.name
       setBalances((b) => ({ ...b, [memberId]: (b[memberId] ?? 0) - e.amount }))
-      setHistory((h) => ({ ...h, [memberId]: [{ date: dmOf(TODAY), text: `Storno: ${e.text}`, amount: -e.amount, storno: true }, ...h[memberId].map((x, i) => (i === index ? { ...x, reversed: true } : x))] }))
-      say(`Storno gebucht: ${eur(-e.amount)}`)
+      setHistory((h) => ({ ...h, [memberId]: [{ date: dmOf(TODAY), text: `Storno: ${e.text}${why}`, amount: -e.amount, storno: true, source: e.source }, ...h[memberId].map((x, i) => (i === index ? { ...x, reversed: true } : x))] }))
+      const src = e.source
+      if (src?.kind === 'kassa' && src.lineId) {
+        post({ date: postingDate(TODAY), text: `Storno Einzahlung bar: ${who}${why}`, amount: -e.amount, accountId: CASH_ID, needsReceipt: false }, { kind: 'konto', memberId })
+        say(`Storno gebucht: ${eur(-e.amount)}, auch in der Kassa`)
+      } else if (src?.kind === 'bank' && src.lineId && done[src.lineId]?.kind === 'konto') {
+        const lineId = src.lineId
+        setDone((d) => { const { [lineId]: _gone, ...rest } = d; return rest })
+        say(`Storno gebucht: ${eur(-e.amount)}, die Bankzeile ist wieder offen`)
+      } else say(`Storno gebucht: ${eur(-e.amount)}`)
+    },
+    remind: (ids, by) => {
+      setReminders((r) => ({ ...r, ...Object.fromEntries(ids.map((id) => [id, { at: TODAY, by, count: (r[id]?.count ?? 0) + 1 }])) }))
+      say(`${ids.length} Zahlungserinnerung(en) gesendet`)
+    },
+    setStatement: (month, state, by) => {
+      setStatements((x) => ({ ...x, [month]: { state, ...(state === 'versendet' ? { at: TODAY, by } : {}) } }))
+      if (state === 'versendet') say('Kontoauszüge freigegeben und gesendet')
+    },
+    announce: (a) => { setAnnouncements((x) => [{ ...a, id: newId('an'), status: 'offen' }, ...x]); say('Einzahlung gemeldet, der Kassier ordnet sie zu') },
+    resolveAnnouncement: (id) => setAnnouncements((x) => x.map((a) => (a.id === id ? { ...a, status: 'erledigt' } : a))),
+    payFee: ({ feeId, person, invoice, amount, method, lineId, dateIso }) => {
+      const target: Target = { kind: 'buchung', splits: [{ costCenterId: 'cc-verein', categoryId: 'e-fees', percent: 100 }] }
+      let id = lineId
+      if (method === 'bar') id = post({ date: postingDate(dateIso), text: `Mitgliedsbeitrag bar: ${person}${invoice ? ` ${invoice}` : ''}`, amount, accountId: CASH_ID, needsReceipt: false }, target)
+      else if (id) apply([{ lineId: id, target }])
+      if (!id) return
+      setFeePayments((x) => ({ ...x, [feeId]: { method, lineId: id!, at: dateIso } }))
+      say(`Beitrag bezahlt: ${eur(amount)} · ${person}${method === 'bar' ? ' (Kassa gebucht)' : ''}`)
     },
     bookCash: (target, amount, dateIso, by) => {
       const date = postingDate(dateIso)
@@ -309,12 +453,20 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
     },
     unlinkReceipt: (receiptId) => setReceipts((rs) => rs.map((r) => (r.id === receiptId ? { ...r, lineId: undefined } : r))),
     markNoReceipt: (lineId, reason, by) => { setExempt((e) => ({ ...e, [lineId]: { reason, by, at: dmOf(TODAY) } })); say('Ohne Beleg gebucht: als Ausnahme vermerkt') },
+    markOwnReceipt: (lineId, reason, by, own) => { setExempt((e) => ({ ...e, [lineId]: { reason, by, at: dmOf(TODAY), own } })); say(`Eigenbeleg ${own.no} erstellt: als Ausnahme vermerkt`) },
     clearNoReceipt: (lineId) => dropExempt(lineId),
     createReceipt: (r) => {
       const id = newId('r')
-      setReceipts((rs) => [{ id, name: r.file, supplier: r.supplier, number: r.number || undefined, amount: r.amount, date: r.date, source: r.source ?? 'Upload', note: r.note, lineId: r.lineId, splits: r.splits, fuel: r.fuel }, ...rs])
-      dropExempt(r.lineId)
-      say(`Beleg erstellt: ${r.supplier}${r.number ? ` ${r.number}` : ''}`)
+      let lineId = r.lineId
+      if (r.cashAccountId && !lineId) {
+        const text = `Barausgabe: ${r.supplier}${r.number ? ` ${r.number}` : ''}`
+        const l = { date: postingDate(r.date), text, amount: -r.amount, accountId: r.cashAccountId, needsReceipt: true }
+        if (r.splits) lineId = post(l, { kind: 'buchung', splits: r.splits })
+        else { lineId = newId('k'); setLines((ls) => [{ ...l, id: lineId! }, ...ls]) }
+      }
+      setReceipts((rs) => [{ id, name: r.file, supplier: r.supplier, number: r.number || undefined, amount: r.amount, date: r.date, source: r.source ?? 'Upload', note: r.note, lineId, splits: r.splits, fuel: r.fuel, due: r.due }, ...rs])
+      dropExempt(lineId)
+      say(r.cashAccountId ? `Beleg erstellt und aus ${accountName(r.cashAccountId)} bezahlt: ${eur(-r.amount)}` : `Beleg erstellt: ${r.supplier}${r.number ? ` ${r.number}` : ''}`)
       return id
     },
     bookExpense: book,

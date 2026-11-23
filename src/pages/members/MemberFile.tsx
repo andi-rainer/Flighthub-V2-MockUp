@@ -8,9 +8,10 @@ import { useBack } from '../../backTo'
 import { useApp } from '../../state'
 import { Badge, Banner, Button, Card } from '../../ui'
 import { AccountPanel } from '../finance/Accounts'
-import { describe, durationText, feeIsOpen, feeLabel, feeTone, fmtDate, schedule } from './data'
+import { describe, durationText, feeIsOpen, fmtDate, schedule, type Fee } from './data'
 import { FeeDocDrawer, useFeeActions, type Doc } from './FeeDoc'
 import DirectAssign from './DirectAssign'
+import { FeePayDrawer, FeeStatus } from './Fees'
 import FunctionAssign from './FunctionAssign'
 import MemberHistory from './MemberHistory'
 import { useSession } from '../../session/session'
@@ -36,6 +37,7 @@ export default function MemberFile() {
   const [assign, setAssign] = useState<{ editing?: Assignment } | null>(null)
   const [doc, setDoc] = useState<Doc | null>(null)
   const [feeNote, setFeeNote] = useState<string | null>(null)
+  const [paying, setPaying] = useState<Fee | null>(null)
   const { send } = useFeeActions()
   const { guarded } = useSession()
   const mine_ = assignments[m.id] ?? []
@@ -70,7 +72,7 @@ export default function MemberFile() {
           <h1 className="text-2xl font-semibold tracking-tight">{m.name}</h1>
           <div className="mt-2 flex flex-wrap gap-2">{m.manual && <Badge tone="warn">Ohne Formular angelegt</Badge>}{mine_.filter((a) => isCurrent(a, TODAY_ISO)).map((a) => <Badge key={a.fn} tone="info">{fnName(a.fn)}</Badge>)}{ends ? <Badge tone="warn">Austritt zum {ends}</Badge> : <Badge tone={m.membership === 'aktiv' ? 'ok' : 'warn'}>{m.membership === 'aktiv' ? 'Aktiv' : m.membership === 'offen' ? 'Beitrag offen' : 'Ruhend'}</Badge>}{myFees.some((f) => feeIsOpen(f)) && <Badge tone="warn">Beitrag offen</Badge>}</div>
         </div>
-        {hasAccount(m.id) ? <div className="text-right"><div className="text-xs uppercase tracking-wide text-muted">Betriebskonto</div><div className={clsx('text-2xl font-semibold tabular-nums', balance < 0 && 'text-bad')}>{eur(balance)}</div>{windDown(m.id) && <div className="text-xs text-warn">läuft aus, bis ausgeglichen</div>}</div> : <Badge>Mitgliedschaft ohne Betriebskonto</Badge>}
+        {hasAccount(m.id) ? <div className="text-right"><div className="text-xs uppercase tracking-wide text-muted">Betriebskonto</div><div className={clsx('text-2xl font-semibold tabular-nums', balance < 0 && 'text-bad')}>{eur(balance)}</div>{windDown(m.id) && <div className="text-xs text-warn">läuft aus, bis ausgeglichen</div>}{ledger.reminders[m.id] && balance < 0 && <div className="text-xs text-muted">erinnert am {ledger.reminders[m.id].at.split('-').reverse().join('.').slice(0, 6)}</div>}</div> : <Badge>Mitgliedschaft ohne Betriebskonto</Badge>}
       </div>
 
       <div className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
@@ -162,11 +164,12 @@ export default function MemberFile() {
                     <td className="px-5 py-2.5">{f.note}</td>
                     <td className="px-3 py-2.5 text-right font-medium tabular-nums">{f.state === 'beendet' ? '–' : eur(f.amount)}</td>
                     <td className="hidden px-3 py-2.5 text-muted sm:table-cell">{f.due}</td>
-                    <td className="px-3 py-2.5"><Badge tone={feeTone[f.state]}>{feeLabel[f.state]}</Badge>{f.invoice && <span className="ml-2 text-xs text-muted">{f.invoice}</span>}</td>
+                    <td className="px-3 py-2.5"><FeeStatus f={f} /></td>
                     <td className="px-3 py-2 text-right">
                       {f.state === 'faellig' && <Button onClick={() => setDoc({ fee: f, kind: 'Rechnung' })}>Rechnung erstellen</Button>}
-                      {f.state === 'ueberfaellig' && <Button onClick={() => setDoc({ fee: f, kind: 'Zahlungsaufforderung' })}>Zahlungsaufforderung</Button>}
-                      {(f.state === 'rechnung' || f.state === 'bezahlt') && f.invoice && <button onClick={() => setDoc({ fee: f, kind: 'Rechnung' })} className="text-xs text-brand hover:underline">Rechnung ansehen</button>}
+                      {f.state === 'rechnung' && <Button onClick={() => setPaying(f)}>Zahlung erfassen</Button>}
+                      {f.state === 'ueberfaellig' && <div className="flex items-center justify-end gap-2"><button onClick={() => setPaying(f)} className="text-xs text-brand hover:underline">Zahlung erfassen</button><Button onClick={() => setDoc({ fee: f, kind: 'Zahlungsaufforderung' })}>Zahlungsaufforderung</Button></div>}
+                      {(f.state === 'rechnung' || f.state === 'bezahlt') && f.invoice && <button onClick={() => setDoc({ fee: f, kind: 'Rechnung' })} className="ml-3 text-xs text-brand hover:underline">Rechnung ansehen</button>}
                     </td>
                   </tr>
                 ))}
@@ -174,7 +177,8 @@ export default function MemberFile() {
             </table>
           )}
         </Card>
-        <FeeDocDrawer doc={doc} onClose={() => setDoc(null)} onSend={(ids, kind) => { setFeeNote(send(ids, kind)); setDoc(null) }} />
+        <FeeDocDrawer doc={doc} onClose={() => setDoc(null)} onSend={(ids, kind) => { send(ids, kind); setFeeNote(`${ids.length} ${kind === 'Rechnung' ? 'Rechnung(en)' : 'Zahlungsaufforderung(en)'} versendet. Ist sie bezahlt, hier „Zahlung erfassen“.`); setDoc(null) }} />
+        <FeePayDrawer fee={paying} onClose={() => setPaying(null)} />
         </div>
       )}
 

@@ -5,7 +5,7 @@ import { eur } from '../../data'
 import { TODAY_ISO, useApp } from '../../state'
 import { Badge, Card, Segmented, Stat } from '../../ui'
 import { fuelStats, perLiter } from './parts'
-import { computeResults, resultYears, type CcResult } from './results'
+import { computeResults, resultYears, useExtras, type Budget, type CcResult } from './results'
 
 const TH = 'px-3 py-2 text-right font-medium'
 
@@ -14,12 +14,20 @@ const TH = 'px-3 py-2 text-right font-medium'
  * center. Any number of aircraft and cost centers; nothing is fixed in the page.
  */
 export default function Result({ onOpenLines }: { onOpenLines: () => void }) {
-  const { ledger, entries, kinds } = useApp()
+  const { ledger, entries, kinds, flights } = useApp()
+  const { budgetOf } = useExtras()
   const current = TODAY_ISO.slice(0, 4)
   const years = resultYears(ledger, current)
   const [year, setYear] = useState(current)
   const [openId, setOpenId] = useState<string | null>(null)
   const r = computeResults(ledger, entries, year)
+  const prevYear = String(Number(year) - 1)
+  const prev = years.includes(prevYear) ? computeResults(ledger, entries, prevYear) : null
+  const prevOf = (id: string) => prev?.rows.find((x) => x.cc.id === id)
+  const plan = Object.values(Object.fromEntries(ledger.costCenters.map((c) => [c.id, budgetOf(year, c.id)]))).filter((b): b is Budget => !!b)
+  const planResult = plan.length ? plan.reduce((n, b) => n + b.income - b.cost, 0) : null
+  // Flights are charged to the Betriebskonto of the pilot: that income is not on any cost center yet.
+  const flown = flights.filter((f) => f.state === 'verrechnet' && year === current).reduce((n, f) => n + f.amount, 0)
   const yearAgo = `${Number(current) - 1}${TODAY_ISO.slice(4)}`
   const fuel = fuelStats(ledger.receipts.filter((x) => x.date >= yearAgo))
   const groups = (['Sparte', 'Allgemein'] as const).map((kind) => ({ kind, rows: r.rows.filter((x) => x.cc.kind === kind) })).filter((g) => g.rows.length > 0)
@@ -36,9 +44,9 @@ export default function Result({ onOpenLines }: { onOpenLines: () => void }) {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat compact label={`Erträge ${year}`} value={eur(r.income)} />
-        <Stat compact label={`Kosten ${year}`} value={eur(r.cost)} />
-        <Stat compact label="Ergebnis" value={eur(r.result)} tone={r.result >= 0 ? 'ok' : 'bad'} />
+        <Stat compact label={`Erträge ${year}`} value={eur(r.income)} hint={prev ? `Vorjahr ${eur(prev.income)}` : undefined} />
+        <Stat compact label={`Kosten ${year}`} value={eur(r.cost)} hint={prev ? `Vorjahr ${eur(prev.cost)}` : undefined} />
+        <Stat compact label="Ergebnis" value={eur(r.result)} tone={r.result >= 0 ? 'ok' : 'bad'} hint={[planResult !== null && `Plan ${eur(planResult)}`, prev && `Vorjahr ${eur(prev.result)}`].filter(Boolean).join(' · ') || undefined} />
         {fuel && <Stat compact label="Ø Treibstoffpreis" value={perLiter(fuel.avg)} hint={`${Math.round(fuel.liters)} L, letzte 12 Monate`} />}
       </div>
 
@@ -47,7 +55,7 @@ export default function Result({ onOpenLines }: { onOpenLines: () => void }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[44rem] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
-              <tr><th className="px-4 py-2 font-medium">Flugzeug</th><th className={TH}>Flugstunden</th><th className={TH}>Kosten</th><th className={TH}>variabel je Std.</th><th className={TH}>Fixkosten</th><th className={TH}>Kostendeckend je Std.</th><th className={`${TH} pr-4`}>Preise heute je Std.</th></tr>
+              <tr><th className="px-4 py-2 font-medium">Flugzeug</th><th className={TH}>Flugstunden</th><th className={TH}>Kosten</th><th className={TH}>Plan</th><th className={TH}>variabel je Std.</th><th className={TH}>Fixkosten</th><th className={TH}>Kostendeckend je Std.</th><th className={`${TH} pr-4`}>Preise heute je Std.</th></tr>
             </thead>
             <tbody className="divide-y divide-line tabular-nums">
               {r.aircraft.map((a) => {
@@ -57,7 +65,8 @@ export default function Result({ onOpenLines }: { onOpenLines: () => void }) {
                   <tr key={a.cc.id}>
                     <td className="px-4 py-2 font-medium">{a.reg}</td>
                     <td className="px-3 py-2 text-right">{a.minutes ? (a.minutes / 60).toLocaleString('de-AT', { maximumFractionDigits: 1 }) : '–'}</td>
-                    <td className="px-3 py-2 text-right">{eur(a.cost)}</td>
+                    <td className="px-3 py-2 text-right">{eur(a.cost)}{prevOf(a.cc.id) && <div className="text-xs text-muted">Vorjahr {eur(prevOf(a.cc.id)!.cost)}</div>}</td>
+                    <td className="px-3 py-2 text-right"><PlanBar ist={a.cost} plan={budgetOf(year, a.cc.id)?.cost} cost /></td>
                     <td className="px-3 py-2 text-right">{a.variablePerHour === null ? '–' : eur(a.variablePerHour)}</td>
                     <td className="px-3 py-2 text-right">{eur(a.fixed)}</td>
                     <td className="px-3 py-2 text-right font-semibold">{a.coverPerHour === null ? '–' : eur(a.coverPerHour)}</td>
@@ -67,7 +76,7 @@ export default function Result({ onOpenLines }: { onOpenLines: () => void }) {
                   </tr>
                 )
               })}
-              {r.aircraft.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-muted">Keine Flugzeug-Kostenstelle.</td></tr>}
+              {r.aircraft.length === 0 && <tr><td colSpan={8} className="p-6 text-center text-muted">Keine Flugzeug-Kostenstelle.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -78,21 +87,30 @@ export default function Result({ onOpenLines }: { onOpenLines: () => void }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[32rem] text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-muted">
-              <tr><th className="px-4 py-2 font-medium">Kostenstelle</th><th className={TH}>Erträge</th><th className={TH}>Kosten</th><th className={`${TH} pr-4`}>Ergebnis</th></tr>
+              <tr><th className="px-4 py-2 font-medium">Kostenstelle</th><th className={TH}>Erträge</th><th className={TH}>Kosten</th><th className={TH}>Ergebnis</th><th className={TH}>Plan</th><th className={`${TH} pr-4`}>Vorjahr</th></tr>
             </thead>
             <tbody className="tabular-nums">
               {groups.map((g) => (
                 <Fragment key={g.kind}>
-                  <tr className="bg-slate-50/60"><td colSpan={4} className="px-4 py-1 text-xs font-medium uppercase tracking-wide text-muted">{g.kind === 'Sparte' ? 'Sparten' : 'Allgemein'}</td></tr>
-                  {g.rows.map((x) => <CostCenterRow key={x.cc.id} row={x} open={openId === x.cc.id} onToggle={() => setOpenId(openId === x.cc.id ? null : x.cc.id)} />)}
+                  <tr className="bg-slate-50/60"><td colSpan={6} className="px-4 py-1 text-xs font-medium uppercase tracking-wide text-muted">{g.kind === 'Sparte' ? 'Sparten' : 'Allgemein'}</td></tr>
+                  {g.rows.map((x) => <CostCenterRow key={x.cc.id} row={x} plan={budgetOf(year, x.cc.id)} prev={prev ? prevOf(x.cc.id)?.result ?? 0 : undefined} open={openId === x.cc.id} onToggle={() => setOpenId(openId === x.cc.id ? null : x.cc.id)} />)}
                 </Fragment>
               ))}
               <tr className="border-t-2 border-line font-semibold">
                 <td className="px-4 py-2">Gesamt, mit Flugzeugen</td>
                 <td className="px-3 py-2 text-right">{eur(r.income)}</td>
                 <td className="px-3 py-2 text-right">{eur(r.cost)}</td>
-                <td className={clsx('px-3 py-2 pr-4 text-right', r.result >= 0 ? 'text-ok' : 'text-bad')}>{eur(r.result)}</td>
+                <td className={clsx('px-3 py-2 text-right', r.result >= 0 ? 'text-ok' : 'text-bad')}>{eur(r.result)}</td>
+                <td className="px-3 py-2 text-right">{planResult === null ? '–' : eur(planResult)}</td>
+                <td className="px-3 py-2 pr-4 text-right">{prev ? eur(prev.result) : '–'}</td>
               </tr>
+              {flown > 0 && (
+                <tr className="text-xs text-muted">
+                  <td className="px-4 py-2">Verrechnete Flüge auf Betriebskonten, ohne Kostenstelle</td>
+                  <td className="px-3 py-2 text-right">{eur(flown)}</td>
+                  <td colSpan={4} className="px-3 py-2 pr-4"><Badge tone="warn">fehlt im Ergebnis</Badge></td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -101,24 +119,39 @@ export default function Result({ onOpenLines }: { onOpenLines: () => void }) {
   )
 }
 
-function CostCenterRow({ row: x, open, onToggle }: { row: CcResult; open: boolean; onToggle: () => void }) {
+/** Ist against plan as a small bar; over plan (costs) or under plan (income) shows red. */
+function PlanBar({ ist, plan, cost, label }: { ist: number; plan?: number; cost?: boolean; label?: string }) {
+  if (!plan) return <span className="text-muted">–</span>
+  const share = ist / plan
+  const bad = cost ? share > 1 : false
+  return (
+    <span className="inline-flex flex-col items-end gap-1">
+      <span className="text-xs">{label && <span className="text-muted">{label} </span>}{eur(plan)}</span>
+      <span className="block h-1.5 w-20 overflow-hidden rounded-full bg-slate-100"><span className={clsx('block h-full', bad ? 'bg-bad' : 'bg-brand')} style={{ width: `${Math.min(100, Math.round(share * 100))}%` }} /></span>
+    </span>
+  )
+}
+
+function CostCenterRow({ row: x, plan, prev, open, onToggle }: { row: CcResult; plan?: Budget; prev?: number; open: boolean; onToggle: () => void }) {
   return (
     <>
       <tr onClick={onToggle} className="cursor-pointer border-t border-line hover:bg-slate-50">
         <td className="px-4 py-2 font-medium"><span className="inline-flex items-center gap-1.5">{open ? <ChevronDown size={14} className="text-muted" /> : <ChevronRight size={14} className="text-muted" />}{x.cc.name}</span></td>
         <td className="px-3 py-2 text-right">{eur(x.income)}</td>
         <td className="px-3 py-2 text-right">{eur(x.cost)}</td>
-        <td className={clsx('px-3 py-2 pr-4 text-right font-semibold', x.result >= 0 ? 'text-ok' : 'text-bad')}>{eur(x.result)}</td>
+        <td className={clsx('px-3 py-2 text-right font-semibold', x.result >= 0 ? 'text-ok' : 'text-bad')}>{eur(x.result)}</td>
+        <td className="px-3 py-2 text-right">{plan ? <PlanBar ist={plan.cost && !plan.income ? x.cost : x.income} plan={plan.cost && !plan.income ? plan.cost : plan.income} cost={!!plan.cost && !plan.income} label={plan.cost && !plan.income ? 'Kosten' : 'Erträge'} /> : <span className="text-muted">–</span>}</td>
+        <td className="px-3 py-2 pr-4 text-right text-muted">{prev === undefined ? '–' : eur(prev)}</td>
       </tr>
       {open && x.parts.map((p) => (
         <tr key={p.categoryId} className="text-xs text-muted">
           <td className="py-1 pl-11 pr-3">{p.name}</td>
           <td className="px-3 py-1 text-right">{p.type === 'Ertrag' ? eur(p.amount) : ''}</td>
           <td className="px-3 py-1 text-right">{p.type === 'Kosten' ? eur(p.amount) : ''}</td>
-          <td className="px-3 py-1 pr-4" />
+          <td colSpan={3} className="px-3 py-1 pr-4" />
         </tr>
       ))}
-      {open && x.parts.length === 0 && <tr className="text-xs text-muted"><td colSpan={4} className="py-1 pl-11">Keine Buchungen in diesem Jahr.</td></tr>}
+      {open && x.parts.length === 0 && <tr className="text-xs text-muted"><td colSpan={6} className="py-1 pl-11">Keine Buchungen in diesem Jahr.</td></tr>}
     </>
   )
 }

@@ -1,4 +1,4 @@
-import { Download, Lock } from 'lucide-react'
+import { ArrowLeftRight, Download, Lock, Wand2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { eur, type BankLine, type Receipt, type Split } from '../../data'
 import { useSession } from '../../session/session'
@@ -7,11 +7,14 @@ import { dmy } from '../manifest/data'
 import { Field, field, useActor } from '../tickets/parts'
 import { Assign, SplitsEditor } from './Assign'
 import { ExpenseDrawer } from './Expense'
+import { DayReportDrawer } from './DayReport'
 import LineReceipts from './LineReceipts'
 import { LinePicker } from './ReceiptDialogs'
 import { monthOf, type Ledger } from './ledger'
 import { confLabel, Dot, monthLabel, openReceiptFile } from './parts'
-import { lineStatus, STATUS } from './status'
+import { RuleForm } from './Rules'
+import { ruleOf, useRules, type Rule } from './ruleStore'
+import { counterOf, lineStatus, receiptsOf, STATUS } from './status'
 
 /** What the detail pane shows: a booking, an invoice, or the assignment of an open booking. One at a time, so drawers never pile up. */
 export type View = { line: string } | { invoice: string } | { assign: string }
@@ -57,10 +60,22 @@ function LineDrawer({ line, ledger, show, onClose }: { line: BankLine; ledger: L
   const splitsValid = !cur || (cur.reduce((n, s) => n + s.percent, 0) === 100 && cur.every((s) => s.categoryId))
   const changed = text.trim() !== (line.bookingText ?? '') || splitsChanged
   const save = () => { guarded('billing.bank.manage', () => ledger.editLine(line.id, { bookingText: text, splits: splitsChanged ? cur : undefined }, actor)); onClose() }
+  const counter = counterOf(line, ledger)
+  const rule = ruleOf(line, useRules())
+  const [ruleForm, setRuleForm] = useState<Partial<Rule> | null>(null)
+  /** [Entwurf] A rule from this booking: the supplier (or the bank text up to the dash) as the condition, its target as the suggestion. */
+  const ruleFromLine = (): Partial<Rule> | null => {
+    const supplier = receiptsOf(line, ledger)[0]?.supplier
+    const match = supplier ?? line.text.split(' – ')[0].replace(/^ÜW (an )?/, '').trim()
+    const t = target
+    const rt: Rule['target'] | null = t?.kind === 'buchung' ? t : t?.kind === 'umbuchung' ? { kind: 'umbuchung', accountId: t.accountId } : t?.kind === 'konto' ? t : null
+    return rt && { match, name: match, dir: line.amount < 0 ? 'aus' : 'ein', target: rt, supplier }
+  }
+  const draftRule = rule ? null : ruleFromLine()
 
   return (
     <>
-      <Drawer open={!hidden} title="Buchung" size="md" onClose={onClose}
+      <Drawer open={!hidden && !ruleForm} title="Buchung" size="md" onClose={onClose}
         footer={locked || !changed ? <div className="flex justify-end"><Button onClick={onClose}>Schließen</Button></div> : <div className="flex justify-end gap-2"><Button onClick={onClose}>Abbrechen</Button><Button variant="primary" disabled={!splitsValid} onClick={save}>Änderungen speichern</Button></div>}>
         <div className="space-y-5 text-sm">
           <div className="rounded-xl bg-slate-50 p-3">
@@ -82,6 +97,15 @@ function LineDrawer({ line, ledger, show, onClose }: { line: BankLine; ledger: L
             ) : (
               <div className="flex items-center gap-2 rounded-lg border border-line px-3 py-2"><Badge>{ledger.kindOf(target!)}</Badge><span className="min-w-0">{ledger.label(target!)}</span></div>
             )}
+            {counter && (
+              <button onClick={() => show({ line: counter.id })} className="mt-1.5 flex w-full items-center gap-2 rounded-lg border border-line px-3 py-2 text-left hover:border-brand">
+                <ArrowLeftRight size={14} className="shrink-0 text-muted" />
+                <span className="min-w-0 flex-1"><span className="block text-xs text-muted">Gegenbuchung · {dmy(counter.date)} · {ledger.accountName(counter.accountId)}</span><span className="block truncate">{counter.bookingText ?? counter.text}</span></span>
+                <span className={`font-medium tabular-nums ${counter.amount < 0 ? 'text-bad' : 'text-ok'}`}>{eur(counter.amount)}</span>
+              </button>
+            )}
+            {rule ? <button onClick={() => setRuleForm(rule)} className="mt-1.5 inline-flex items-center gap-1 text-xs text-muted hover:text-brand"><Wand2 size={12} /> Regel „{rule.name}“</button>
+              : draftRule && !locked && <button onClick={() => setRuleForm(draftRule)} className="mt-1.5 inline-flex items-center gap-1 text-xs text-brand"><Wand2 size={12} /> Regel aus dieser Buchung erstellen</button>}
           </div>
 
           <LineReceipts line={line} ledger={ledger} locked={locked} booked onInvoice={(id) => show({ invoice: id })} onDialog={setHidden} />
@@ -96,6 +120,7 @@ function LineDrawer({ line, ledger, show, onClose }: { line: BankLine; ledger: L
           )}
         </div>
       </Drawer>
+      {ruleForm && <RuleForm ledger={ledger} rule={ruleForm} onClose={() => setRuleForm(null)} />}
     </>
   )
 }
@@ -104,6 +129,8 @@ function LineDrawer({ line, ledger, show, onClose }: { line: BankLine; ledger: L
 function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt; ledger: Ledger; show: (v: View) => void; onClose: () => void }) {
   const [picking, setPicking] = useState(false)
   const [expense, setExpense] = useState(false)
+  const dayReport = r.source === 'Kassa' ? ledger.dayReports.find((d) => d.receiptId === r.id) : undefined
+  const [report, setReport] = useState(false)
   const line = ledger.lines.find((l) => l.id === r.lineId)
   const locked = !!line && ledger.isLocked(line.date)
   const booked = !!line && !!ledger.done[line.id]
@@ -117,14 +144,14 @@ function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt
 
   return (
     <>
-      <Drawer open={!picking && !expense} title="Rechnung" onClose={onClose} footer={<div className="flex justify-end"><Button onClick={onClose}>Schließen</Button></div>}>
+      <Drawer open={!picking && !expense && !report} title="Rechnung" onClose={onClose} footer={<div className="flex justify-end"><Button onClick={onClose}>Schließen</Button></div>}>
         <div className="space-y-5 text-sm">
           <div className="rounded-xl bg-slate-50 p-3">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0"><div className="font-medium">{r.supplier}</div><div className="text-xs text-muted">{r.number ? `Rechnung ${r.number} · ` : ''}{dmy(r.date)} · {r.source}</div></div>
+              <div className="min-w-0"><div className="font-medium">{r.supplier}{r.amount < 0 && <span className="ml-2 align-middle"><Badge tone="neutral">Gutschrift</Badge></span>}</div><div className="text-xs text-muted">{r.number ? `${r.amount < 0 ? 'Gutschrift' : 'Rechnung'} ${r.number} · ` : ''}{dmy(r.date)} · {r.source}{r.due ? ` · Zahlungsziel ${dmy(r.due)}` : ''}</div></div>
               <div className="shrink-0 text-lg font-semibold tabular-nums">{eur(r.amount)}</div>
             </div>
-            <button onClick={() => openReceiptFile(r.name)} className="mt-2 inline-flex items-center gap-1.5 text-brand hover:underline"><Download size={14} /> {r.name}</button>
+            <button onClick={() => (dayReport ? setReport(true) : openReceiptFile(r.name))} className="mt-2 inline-flex items-center gap-1.5 text-brand hover:underline"><Download size={14} /> {r.name}</button>
             {r.note && <div className="mt-1 text-xs text-muted">{r.note}</div>}
           </div>
 
@@ -166,6 +193,7 @@ function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt
       </Drawer>
       <LinePicker receipt={picking ? r : null} ledger={ledger} onClose={() => setPicking(false)} />
       {expense && <ExpenseDrawer ledger={ledger} from={r} onClose={() => setExpense(false)} />}
+      {report && dayReport && <DayReportDrawer report={dayReport} onClose={() => setReport(false)} />}
     </>
   )
 }

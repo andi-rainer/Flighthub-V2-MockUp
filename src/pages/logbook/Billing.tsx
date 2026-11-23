@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { Plus, X } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { eur, members } from '../../data'
 import MemberPicker from '../../MemberPicker'
 import { useSession } from '../../session/session'
@@ -19,7 +20,7 @@ export function FlightBilling({ flight: f, onEditing }: { flight: FlightCharge; 
   const setEdit = (v: boolean) => { setEditState(v); onEditing(v) }
   const rate = f.minutes ? f.amount / f.minutes : 0
   if (f.state === 'verrechnet') {
-    return <Section title="Verrechnung"><Parts split={f.split} amount={f.amount} /><div className="px-1 pt-2"><Badge tone="ok">verrechnet</Badge></div></Section>
+    return <Section title="Verrechnung"><Parts split={f.split} amount={f.amount} linked /><div className="px-1 pt-2"><Badge tone="ok">verrechnet</Badge></div></Section>
   }
   return (
     <Section title="Verrechnung">
@@ -34,10 +35,16 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
   <section className="mt-5 rounded-xl border border-line p-3"><h3 className="mb-2 text-sm font-semibold">{title}</h3>{children}</section>
 )
 
-function Parts({ split, amount }: { split: Part[]; amount: number }) {
+/** `linked`: the flight is charged, a Betriebskonto part leads to the booking in the account of the member. */
+function Parts({ split, amount, linked = false }: { split: Part[]; amount: number; linked?: boolean }) {
   return (
     <div className="divide-y divide-line text-sm">
-      {split.map((x, i) => <div key={i} className="flex justify-between gap-3 py-1.5"><span>{x.who} <span className="text-muted">({x.percent} %)</span></span><span className="tabular-nums">{eur((amount * x.percent) / 100)}</span></div>)}
+      {split.map((x, i) => (
+        <div key={i} className="flex justify-between gap-3 py-1.5">
+          <span>{x.who} <span className="text-muted">({x.percent} %)</span>{linked && x.memberId && <Link to={`/mitglieder/${x.memberId}?tab=konto`} state={{ from: { label: 'Bordbuch', to: '/bordbuch' } }} className="ml-2 text-brand hover:underline">Im Konto</Link>}</span>
+          <span className="tabular-nums">{eur((amount * x.percent) / 100)}</span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -91,9 +98,13 @@ export function BillingBar({ flights, onClear, onReview }: { flights: FlightChar
 
 /** The picked flights at a glance, nothing is charged before the list was seen. */
 export function ChargeDrawer({ flights, onClose, onDone }: { flights: FlightCharge[]; onClose: () => void; onDone: (n: number) => void }) {
-  const { chargeFlights } = useApp()
+  const { chargeFlights, ledger } = useApp()
   const { guarded } = useSession()
   const total = flights.reduce((n, f) => n + f.amount, 0)
+  // What the charge does to each Betriebskonto: balance now and after. Cost center parts only move the result.
+  const charged = new Map<string, number>()
+  for (const f of flights) for (const x of f.split) if (x.memberId) charged.set(x.memberId, (charged.get(x.memberId) ?? 0) + (f.amount * x.percent) / 100)
+  const toCostCenters = flights.reduce((n, f) => n + f.split.filter((x) => !x.memberId).reduce((m, x) => m + (f.amount * x.percent) / 100, 0), 0)
   return (
     <Drawer open title={`${flights.length} ${flights.length === 1 ? 'Flug' : 'Flüge'} verrechnen`} onClose={onClose}
       footer={<Button variant="primary" size="lg" className="w-full" disabled={flights.length === 0} onClick={() => { guarded('billing.flights.charge', () => { chargeFlights(flights.map((f) => f.id)); onDone(flights.length) }); onClose() }}>{eur(total)} verrechnen</Button>}>
@@ -104,6 +115,21 @@ export function ChargeDrawer({ flights, onClose, onDone }: { flights: FlightChar
             <div className="truncate text-xs text-muted">{f.kind} · {f.minutes} min · {splitText(f.split)}</div>
           </div>
         ))}
+      </div>
+      <div className="mt-4">
+        <div className="mb-1.5 text-sm font-semibold">Betriebskonten</div>
+        <div className="divide-y divide-line rounded-xl border border-line text-sm">
+          {[...charged].map(([id, sum]) => {
+            const now = ledger.balances[id] ?? 0
+            return (
+              <div key={id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <span className="min-w-0 truncate">{members.find((m) => m.id === id)?.name}</span>
+                <span className="shrink-0 tabular-nums"><span className="text-muted">{eur(now)} →</span> <b className={clsx(now - sum < 0 && 'text-bad')}>{eur(now - sum)}</b></span>
+              </div>
+            )
+          })}
+          {toCostCenters > 0 && <div className="flex items-center justify-between gap-3 px-3 py-2 text-muted"><span>Kostenstellen (kein Konto belastet)</span><span className="tabular-nums">{eur(toCostCenters)}</span></div>}
+        </div>
       </div>
     </Drawer>
   )

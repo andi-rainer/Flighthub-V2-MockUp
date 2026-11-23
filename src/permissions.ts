@@ -9,7 +9,7 @@ export type PermissionCategory =
 export const F = {
   PILOT: 'pilot', FLIGHT_INSTRUCTOR: 'flight_instructor', CHIEF_PILOT: 'chief_pilot',
   SKYDIVE_PILOT: 'skydive_pilot', TANDEM_MASTER: 'tandem_master', SKYDIVE_INSTRUCTOR: 'skydive_instructor', SPORT_JUMPER: 'sport_jumper',
-  MANIFEST_COORDINATOR: 'manifest_coordinator', TREASURER: 'treasurer', CHAIRMAN: 'chairman', SECRETARY: 'secretary',
+  MANIFEST_COORDINATOR: 'manifest_coordinator', TREASURER: 'treasurer', CHAIRMAN: 'chairman', SECRETARY: 'secretary', AUDITOR: 'auditor',
 } as const
 
 export const FUNCTION_GROUPS = ['Fliegen', 'Skydive', 'Betrieb', 'Verwaltung'] as const
@@ -22,6 +22,7 @@ export const FUNCTIONS: FunctionDef[] = [
   { code: F.SKYDIVE_INSTRUCTOR, name: 'Skydive-Instruktor', group: 'Skydive' }, { code: F.SPORT_JUMPER, name: 'Sportspringer', group: 'Skydive' },
   { code: F.MANIFEST_COORDINATOR, name: 'Manifest-Koordinator', group: 'Betrieb' },
   { code: F.TREASURER, name: 'Kassier', group: 'Verwaltung' }, { code: F.CHAIRMAN, name: 'Obmann', group: 'Verwaltung' }, { code: F.SECRETARY, name: 'Schriftführer', group: 'Verwaltung' },
+  { code: F.AUDITOR, name: 'Rechnungsprüfer', group: 'Verwaltung' },
 ]
 
 export interface PermissionDefinition {
@@ -88,7 +89,7 @@ export const PERMISSION_CATALOG = [
   def('functions.delete.custom', 'functions', { sensitive: true }),
   def('permissions.manage', 'permissions', { sensitive: true }),
   everyone('billing.view.own', 'billing'),
-  def('billing.view.all', 'billing', { extra: [F.TREASURER] }),
+  def('billing.view.all', 'billing', { extra: [F.TREASURER, F.AUDITOR] }),
   def('billing.manage', 'billing', { sensitive: true, extra: [F.TREASURER] }),
   def('billing.transactions.create', 'billing', { sensitive: true, extra: [F.TREASURER] }),
   def('billing.transactions.reverse', 'billing', { sensitive: true, extra: [F.TREASURER] }),
@@ -143,13 +144,15 @@ export const PERMISSION_CATALOG = [
   def('billing.bank.manage', 'billing', { sensitive: true }),
   def('billing.statements.approve', 'billing', { sensitive: true }),
   def('billing.periods.release', 'billing', { sensitive: true }),
+  // The Rechnungsprüfer signs off a year; not seeded to the board, so the check is done by someone else than the treasurer.
+  capability('billing.periods.audit', 'billing', [F.AUDITOR]),
   def('members.applications.decide', 'members', { sensitive: true }),
   def('members.fees.manage', 'members', { sensitive: true }),
 ] as const satisfies readonly PermissionDefinition[]
 
 export type Permission = (typeof PERMISSION_CATALOG)[number]['code']
 
-export const NEW_IN_V2: ReadonlySet<string> = new Set(['afp.view', 'afp.create', 'manifest.checkin.self', 'manifest.checkin.others', 'manifest.flights.pilot', 'manifest.jumps.sport', 'manifest.tandem.master', 'billing.bank.manage', 'billing.statements.approve', 'billing.periods.release', 'members.applications.decide', 'members.fees.manage'])
+export const NEW_IN_V2: ReadonlySet<string> = new Set(['afp.view', 'afp.create', 'manifest.checkin.self', 'manifest.checkin.others', 'manifest.flights.pilot', 'manifest.jumps.sport', 'manifest.tandem.master', 'billing.bank.manage', 'billing.statements.approve', 'billing.periods.release', 'billing.periods.audit', 'members.applications.decide', 'members.fees.manage'])
 
 /** Permissions that only work together with another one (the editor enables them together). */
 export const PERMISSION_REQUIREMENTS: Partial<Record<Permission, readonly Permission[]>> = {
@@ -179,6 +182,7 @@ export const PERMISSION_REQUIREMENTS: Partial<Record<Permission, readonly Permis
   'billing.bank.manage': ['billing.view.all'],
   'billing.statements.approve': ['billing.view.all'],
   'billing.periods.release': ['billing.view.all'],
+  'billing.periods.audit': ['billing.view.all'],
   'members.applications.decide': ['members.view.all'],
   'members.fees.manage': ['members.view.all'],
 }
@@ -321,6 +325,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
  "billing_bank_manage": "Bank, Belege und Kostenstellen buchen",
  "billing_statements_approve": "Kontoauszüge freigeben",
  "billing_periods_release": "Buchungszeiträume freigeben und sperren",
+ "billing_periods_audit": "Jahr als Rechnungsprüfer prüfen",
  "members_applications_decide": "Anträge genehmigen oder ablehnen",
  "members_fees_manage": "Mitgliedsbeiträge und Rechnungen verwalten"
 }

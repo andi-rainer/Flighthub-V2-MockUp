@@ -3,8 +3,9 @@ import { ExpenseSubmitCard } from './finance/ExpenseSubmit'
 import clsx from 'clsx'
 import MemberDocuments from './members/MemberDocuments'
 import { AlertTriangle, ArrowRight, CheckCircle2, Plane } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { aircraft, eur, members } from '../data'
+import { aircraft, CASH_ID, eur, members } from '../data'
 import { flightNo, TODAY_ISO, useApp } from '../state'
 import { useNavigate } from 'react-router-dom'
 import { fmtAbs } from '../dates'
@@ -12,6 +13,12 @@ import { flightKey, flightPath, type FlightSource } from './FlightPage'
 import { Badge, Button, Card, PageHeader, Stat } from '../ui'
 import { dueList } from './aircraft/data'
 import { computeResults } from './finance/results'
+import { CashCountDialog } from './finance/CashCount'
+import { COUNT_INTERVAL_DAYS, daysBetween } from './finance/cashDocs'
+import { monthOf } from './finance/ledger'
+import { monthLabel } from './finance/parts'
+import { lineStatus, proofOf } from './finance/status'
+import { dmy } from './manifest/data'
 import { initialFees } from './members/data'
 import { MANIFEST_TODAY, TODAY_DAY } from './manifest/data'
 
@@ -24,15 +31,17 @@ export default function Dashboard() {
   return <MemberHome />
 }
 
-/** Every card is a task or a number that leads to the exact place where it is handled. */
-function Task({ to, n, label, hint }: { to: string; n: number; label: string; hint: string }) {
-  return (
-    <Link to={to} className={clsx('group flex items-center gap-4 rounded-xl border bg-surface p-4 transition hover:border-brand', n > 0 ? 'border-line' : 'border-line opacity-70')}>
+/** Every card is a task or a number that leads to the exact place where it is handled. A task without a place opens its dialog. */
+function Task({ to, onClick, n, label, hint, done }: { to?: string; onClick?: () => void; n: number; label: string; hint: string; /** Text when nothing is open. */ done?: string }) {
+  const body = (
+    <>
       <span className={clsx('grid h-11 w-11 shrink-0 place-items-center rounded-xl text-lg font-semibold tabular-nums', n > 0 ? 'bg-brand-soft text-brand' : 'bg-ok-soft text-ok')}>{n > 0 ? n : <CheckCircle2 size={20} />}</span>
-      <span className="min-w-0 flex-1"><span className="block font-medium">{label}</span><span className="block text-sm text-muted">{n > 0 ? hint : 'Nichts offen'}</span></span>
+      <span className="min-w-0 flex-1"><span className="block font-medium">{label}</span><span className="block text-sm text-muted">{n > 0 ? hint : done ?? 'Nichts offen'}</span></span>
       <ArrowRight size={16} className="text-muted group-hover:text-brand" />
-    </Link>
+    </>
   )
+  const cls = clsx('group flex w-full items-center gap-4 rounded-xl border border-line bg-surface p-4 text-left transition hover:border-brand', n === 0 && 'opacity-70')
+  return to ? <Link to={to} className={cls}>{body}</Link> : <button onClick={onClick} className={cls}>{body}</button>
 }
 
 function Treasurer() {
@@ -43,9 +52,25 @@ function Treasurer() {
   const rows = res.rows.filter((r) => r.cc.kind === 'Sparte')
   const withAccount = members.filter((m) => hasAccount(m.id))
   const toCharge = flights.filter((f) => f.state === 'offen').length
-  const openLines = ledger.lines.filter((l) => !ledger.done[l.id]).length
+  // The finance inbox, counted the way "Zu bearbeiten" in Finanzen counts: by the status of each booking.
+  const status = ledger.lines.map((l) => lineStatus(l, ledger))
+  const openLines = status.filter((x) => x === 'offen').length
+  const noReceipt = status.filter((x) => x === 'beleg').length
+  const differs = status.filter((x) => x === 'abweichung').length
   const openExpenses = ledger.expenses.filter((x) => x.status === 'offen').length
-  const noReceipt = ledger.lines.filter((l) => l.needsReceipt && !ledger.receipts.some((r) => r.lineId === l.id)).length
+  const exceptions = ledger.lines.filter((l) => proofOf(l, ledger) === 'ausnahme').length
+  const unpaid = ledger.receipts.filter((r) => !r.lineId && !ledger.expenseOf(r.id))
+  const overdue = unpaid.filter((r) => r.due && r.due < TODAY_ISO).length
+  const minus = withAccount.filter((m) => (ledger.balances[m.id] ?? 0) < 0)
+  // Past months that are not released yet; the oldest one is the one to do.
+  const thisMonth = monthOf(TODAY_ISO)
+  const toRelease = [...new Set(ledger.lines.map((l) => monthOf(l.date)))].filter((m) => m < thisMonth && !ledger.released[m]).sort()
+  const releaseTodo = toRelease.length > 0 ? ledger.lines.filter((l) => monthOf(l.date) === toRelease[0] && ['offen', 'beleg', 'abweichung'].includes(lineStatus(l, ledger))).length : 0
+  const statementsOpen = Object.values(ledger.statements).filter((x) => x.state !== 'versendet').length
+  // Cash boxes are counted from time to time: the Kassa and every other cash account.
+  const cashDue = ledger.accounts.filter((a) => a.kind === 'bar' && !a.archived).map((a) => ({ a, last: ledger.counts.find((c) => c.accountId === a.id) })).filter(({ last }) => !last || daysBetween(last.date, TODAY_ISO) >= COUNT_INTERVAL_DAYS)
+  const lastKassa = ledger.counts.find((c) => c.accountId === CASH_ID)
+  const [counting, setCounting] = useState<string | null>(null)
   const decide = apps.filter((a) => a.status === 'Unterzeichnet').length
   const feesDue = initialFees.filter((f) => f.state === 'faellig').length
   const owed = withAccount.reduce((n, m) => n + Math.min(0, ledger.balances[m.id] ?? 0), 0)
@@ -58,17 +83,25 @@ function Treasurer() {
     <>
       <PageHeader title={`Guten Morgen, ${members.find((m) => m.id === persona.memberId)!.name.split(' ')[0]}`} />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <Task to="/bordbuch?nur=verrechnen" n={toCharge} label="Flüge verrechnen" hint="aus dem Bordbuch, wartet auf deine Bestätigung" />
-        <Task to="/finanzen?tab=bank&offen=1" n={openExpenses} label="Auslagen prüfen" hint="Bar-Auslagen von Mitgliedern warten auf deine Prüfung" />
-        <Task to="/finanzen?tab=bank" n={openLines} label="Bankzeilen zuordnen" hint="Vorschläge der KI warten auf dich" />
-        <Task to="/finanzen?tab=bank" n={noReceipt} label="Belege fehlen" hint="Buchungen ohne Rechnung oder Lieferschein" />
-        <Task to="/mitglieder?tab=antraege" n={decide} label="Anträge entscheiden" hint="unterschrieben, warten auf Genehmigung" />
-        <Task to="/mitglieder?tab=beitraege" n={feesDue} label="Beitragslauf" hint="Rechnungen sind bereit zur Freigabe" />
-        <Task to="/finanzen?tab=konten" n={1} label="Kontoauszüge Oktober" hint="zur Freigabe vor dem Versand" />
+        {[
+          <Task key="b" to="/finanzen?tab=bank&offen=1" n={openLines} label="Buchungen zuordnen" hint="Vorschläge und offene Zeilen in allen Konten" />,
+          <Task key="a" to="/finanzen?tab=bank&offen=1" n={openExpenses} label="Auslagen prüfen" hint="Bar-Auslagen von Mitgliedern warten auf deine Prüfung" />,
+          <Task key="e" to="/finanzen?tab=bank&offen=1" n={noReceipt + differs} label="Belege fehlen" hint={`${noReceipt} ohne Rechnung${differs > 0 ? `, ${differs} weichen im Betrag ab` : ''}`} />,
+          <Task key="r" to="/finanzen?tab=rechnungen&status=ohne" n={unpaid.length} label="Rechnungen ohne Abbuchung" hint={`${eur(unpaid.reduce((n, r) => n + r.amount, 0))} warten auf die Bank${overdue > 0 ? `, ${overdue} überfällig` : ''}`} />,
+          <Task key="x" to="/finanzen?tab=rechnungen&status=ausnahmen" n={exceptions} label="Ausnahmen ohne Beleg" hint="gebucht mit Grund, für den Rechnungsprüfer" done="Keine Ausnahmen" />,
+          <Task key="m" to="/finanzen?tab=konten&filter=minus" n={minus.length} label="Mitglieder im Minus" hint={`${eur(minus.reduce((n, m) => n + (ledger.balances[m.id] ?? 0), 0))} offen auf ${minus.length} Betriebskonten`} />,
+          <Task key="z" onClick={() => setCounting(cashDue[0]?.a.id ?? CASH_ID)} n={cashDue.length} label="Kassa zählen" hint={`${cashDue.map(({ a }) => a.name).join(', ')}: ${cashDue[0]?.last ? `zuletzt am ${dmy(cashDue[0].last.date)} gezählt` : 'noch nie gezählt'}`} done={lastKassa ? `zuletzt am ${dmy(lastKassa.date)} gezählt` : undefined} />,
+          <Task key="p" to={toRelease[0] ? `/finanzen?tab=zeitraeume&ansicht=monat&monat=${toRelease[0]}` : '/finanzen?tab=zeitraeume'} n={toRelease.length} label="Monat freigeben" hint={`${monthLabel(toRelease[0] ?? thisMonth)}: ${releaseTodo > 0 ? `${releaseTodo} Buchungen noch zu bearbeiten` : 'alles zugeordnet, bereit zur Freigabe'}`} />,
+          <Task key="s" to="/finanzen?tab=konten" n={statementsOpen} label="Kontoauszüge freigeben" hint="Entwurf liegt bereit, vor dem Versand freigeben" />,
+          <Task key="f" to="/bordbuch?nur=verrechnen" n={toCharge} label="Flüge verrechnen" hint="aus dem Bordbuch, wartet auf deine Bestätigung" />,
+          <Task key="c" to="/mitglieder?tab=antraege" n={decide} label="Anträge entscheiden" hint="unterschrieben, warten auf Genehmigung" />,
+          <Task key="l" to="/mitglieder?tab=beitraege" n={feesDue} label="Beitragslauf" hint="Rechnungen sind bereit zur Freigabe" />,
+        ].sort((a, b) => Number(a.props.n === 0) - Number(b.props.n === 0))}
       </div>
+      {counting && <CashCountDialog accountId={counting} onClose={() => setCounting(null)} />}
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Kassa" value={eur(ledger.cash)} hint="Bargeld" />
+        <Stat label="Kassa" value={eur(ledger.cash)} hint={lastKassa ? `Bargeld, gezählt am ${dmy(lastKassa.date)}` : 'Bargeld'} />
         <Stat label="Offen bei Mitgliedern" value={eur(owed)} tone={owed < 0 ? 'bad' : undefined} hint="Betriebskonten im Minus" />
         <Stat label="Guthaben der Mitglieder" value={eur(credit)} hint="Vorauszahlungen" />
         <Stat label={`Ergebnis ${year}`} value={eur(income - cost)} tone={income - cost >= 0 ? 'ok' : 'bad'} hint="Erträge minus Kosten" />

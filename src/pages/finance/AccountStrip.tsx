@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Pencil, Plus } from 'lucide-react'
+import { Pencil, Plus, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { AUSLAGE_ID, eur, type MoneyAccount } from '../../data'
 import { useSession } from '../../session/session'
@@ -7,8 +7,13 @@ import { Button, Drawer, Switch } from '../../ui'
 import { TODAY_ISO } from '../../state'
 import { Field, field } from '../tickets/parts'
 import { type Ledger } from './ledger'
+import { CashCountDialog } from './CashCount'
 import { cents } from './parts'
-import { isTodo, lineStatus } from './status'
+import { isTodo, lineStatus, proofOf } from './status'
+
+/** [Entwurf] Bank sync per bank account: the last sync and a manual one. Kept for the session only (the dummy has no bank). */
+const lastSync: Record<string, string> = {}
+const syncLabel = (id: string) => lastSync[id] ?? 'heute 06:00'
 
 const KIND = { bank: 'Bankkonto', bar: 'Bargeld', spar: 'Sparbuch' } as const
 const HINT = { bank: 'Bank oder IBAN', bar: 'Wo liegt das Bargeld?', spar: 'Bank oder Nummer' } as const
@@ -23,6 +28,19 @@ export default function AccountStrip({ ledger, value, onChange }: { ledger: Ledg
   const active = ledger.accounts.filter((a) => !a.archived)
   const old = ledger.accounts.filter((a) => a.archived)
   const todoOf = (id: string) => ledger.lines.filter((l) => l.accountId === id && isTodo(lineStatus(l, ledger))).length
+  const exemptOf = (id: string) => ledger.lines.filter((l) => l.accountId === id && proofOf(l, ledger) === 'ausnahme').length
+  const [syncing, setSyncing] = useState<string | null>(null)
+  const [counting, setCounting] = useState<string | null>(null)
+  const [, rerender] = useState(0)
+  const sync = (id: string) => {
+    setSyncing(id)
+    setTimeout(() => {
+      const now = new Date()
+      lastSync[id] = `heute ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      setSyncing(null); rerender((n) => n + 1)
+      ledger.notify(`${ledger.accountName(id)} abgeglichen: keine neuen Umsätze`)
+    }, 1200)
+  }
   const toggle = (id: string) => onChange(value === id ? '' : id)
   const card = (id: string, selected: boolean) => clsx('group relative rounded-xl border p-3 text-left', selected ? 'border-brand bg-brand-soft' : 'border-line bg-surface hover:border-slate-300')
 
@@ -41,8 +59,15 @@ export default function AccountStrip({ ledger, value, onChange }: { ledger: Ledg
               <button onClick={() => toggle(a.id)} className="block w-full text-left" aria-pressed={value === a.id}>
                 <div className="truncate pr-6 text-xs font-medium text-muted">{a.name}</div>
                 <div className={clsx('text-lg font-semibold tabular-nums', ledger.balanceOf(a.id) < 0 && 'text-bad')}>{eur(ledger.balanceOf(a.id))}</div>
-                <div className="truncate text-xs text-muted">{KIND[a.kind]} · {todo > 0 ? <span className="font-medium text-amber-900">{todo} zu bearbeiten</span> : 'alles zugeordnet'}</div>
+                <div className="truncate text-xs text-muted">{KIND[a.kind]} · {todo > 0 ? <span className="font-medium text-amber-900">{todo} zu bearbeiten</span> : 'alles zugeordnet'}{exemptOf(a.id) > 0 && <> · {exemptOf(a.id)} ohne Beleg</>}</div>
               </button>
+              {a.kind === 'bar' && !a.archived && <button onClick={() => setCounting(a.id)} className="mt-1 text-[11px] font-medium text-brand hover:underline">Kassa zählen</button>}
+              {a.kind === 'bank' && !a.archived && (
+                <div className="mt-1 flex items-center gap-1 text-[11px] text-muted">
+                  <span className="truncate" title="Letzter Abgleich mit der Bank">{syncing === a.id ? 'Abgleich …' : `Bank ${syncLabel(a.id)}`}</span>
+                  <button onClick={() => sync(a.id)} disabled={syncing === a.id} aria-label={`${a.name} jetzt abgleichen`} title="Jetzt abgleichen" className="rounded p-0.5 hover:bg-slate-100 hover:text-ink"><RefreshCw size={11} className={clsx(syncing === a.id && 'animate-spin')} /></button>
+                </div>
+              )}
               <button onClick={() => setForm(a)} aria-label={`${a.name} bearbeiten`} className="absolute right-2 top-2 rounded p-1 text-muted opacity-60 hover:bg-slate-100 hover:opacity-100"><Pencil size={13} /></button>
             </div>
           )
@@ -55,6 +80,7 @@ export default function AccountStrip({ ledger, value, onChange }: { ledger: Ledg
         <button onClick={() => setForm('new')} className="flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-line p-3 text-sm text-muted hover:border-brand hover:text-brand"><Plus size={15} /> Konto anlegen</button>
       </div>
       {old.length > 0 && <button onClick={() => setArchived(!archived)} className="text-xs text-brand">{archived ? 'Archivierte Konten ausblenden' : `${old.length} archivierte Konten anzeigen`}</button>}
+      {counting && <CashCountDialog accountId={counting} onClose={() => setCounting(null)} />}
       {form && <AccountForm key={form === 'new' ? 'new' : form.id} account={form === 'new' ? null : form} ledger={ledger} onClose={() => setForm(null)} />}
     </div>
   )

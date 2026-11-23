@@ -101,7 +101,7 @@ export const initialCategories: Category[] = [
 /** One part of a booking. A booking can be split across several cost centers (shared hangar, insurance for all aircraft, ...). */
 export interface Split { costCenterId: string; categoryId: string; percent: number }
 /** `zahlung`: the money of a voucher or ticket (or its refund). Until the flight it is a liability, the revenue is booked on the flight. `umbuchung`: money moved to another account of the club. `auslage`: a member paid a cost of the club privately: it is booked on cost centers and credited to the member's Betriebskonto. */
-export type SingleTarget = { kind: 'konto'; memberId: string } | { kind: 'buchung'; splits: Split[] } | { kind: 'zahlung'; code: string; label: string } | { kind: 'umbuchung'; accountId: string; label: string } | { kind: 'auslage'; memberId: string; splits: Split[] }
+export type SingleTarget = { kind: 'konto'; memberId: string } | { kind: 'buchung'; splits: Split[] } | { kind: 'zahlung'; code: string; label: string } | { kind: 'umbuchung'; accountId: string; label: string; /** The counter booking on the other account, when it is known. */ lineId?: string } | { kind: 'auslage'; memberId: string; splits: Split[] }
 /** One part of a bank line that is split: `amount` is the positive part of the line, `receiptId` the invoice it settles (collective debit). */
 export interface Part { amount: number; target: SingleTarget; receiptId?: string }
 /**
@@ -114,7 +114,8 @@ export interface Receipt {
   /** `name` is the file (an invoice of the supplier is always a file), the rest is the data record: it is kept digitally too. */
   id: string; name: string; supplier: string; /** The invoice number of the supplier. */ number?: string; amount: number
   /** Invoice date (ISO). */ date: string
-  source: 'Upload' | 'Bordbuch' | 'E-Mail'; note?: string
+  /** `Kassa`: a document made by the club itself for the cash box (Tagesabschluss-Beleg). */
+  source: 'Upload' | 'Bordbuch' | 'E-Mail' | 'Kassa'; note?: string
   /** Fuel invoices carry the liters and the price per liter: they give the average fuel cost. */
   fuel?: { liters: number; perLiter: number }
   /** A member who paid it privately (Auslage). */
@@ -123,6 +124,8 @@ export interface Receipt {
   /** Planned coding of an invoice that is not booked yet. Once it is on a booking, the booking codes it. */
   splits?: Split[]
   suggestion?: { lineId: string; confidence: number; why: string }
+  /** Zahlungsziel (ISO): until when the club has to pay. Past it and still without a booking: overdue. */
+  due?: string
 }
 
 /** A place where the club's money is: bank account, cash box, savings book. Its balance is the opening balance plus every line on it. */
@@ -164,6 +167,10 @@ export const bankLines: BankLine[] = [
   { id: 'b5', date: '2026-10-31', text: 'Fa. Hofer Schlosserei – Re 2024-77', amount: -312.5, accountId: BANK, needsReceipt: true },
   { id: 'b12', date: '2026-11-06', text: 'ÜW Kofler Maria – Gutschein GS-1049 und Spende', amount: 250, accountId: BANK, needsReceipt: false, suggestion: { target: { kind: 'teilung', parts: [{ amount: 220, target: { kind: 'zahlung', code: 'GS-1049', label: 'Gutschein GS-1049 · Maria Kofler' } }, { amount: 30, target: one('cc-verein', 'e-donation') }] }, confidence: 0.7, why: 'Code GS-1049 im Verwendungszweck, die übrigen 30 € sind vermutlich eine Spende' } },
   { id: 'b13', date: '2026-11-03', text: 'SEPA-Lastschrift Hangar Wels GmbH und Aero-Versicherung', amount: -2000, accountId: BANK, needsReceipt: true },
+  // Money between the club's own accounts: the ATM withdrawal already has its counter booking in the Kassa, the savings deposit not yet.
+  { id: 'b14', date: '2026-11-05', text: 'Bankomat-Behebung 05.11. Wels Stadtplatz', amount: -300, accountId: BANK, needsReceipt: false },
+  { id: 'b15', date: '2026-11-04', text: 'ÜW an Sparbuch Rücklage Flugzeuge', amount: -1000, accountId: BANK, needsReceipt: false },
+  { id: 'kx1', date: '2026-11-05', text: 'Bareinlage aus Bankomat', amount: 300, accountId: CASH_ID, needsReceipt: false },
 ]
 
 export const initialReceipts: Receipt[] = [
@@ -172,15 +179,15 @@ export const initialReceipts: Receipt[] = [
   { id: 'r1', name: 'Rechnung-88231.pdf', supplier: 'Shell Austria', number: '88231', amount: 254.8, date: '2026-11-03', source: 'Upload', lineId: 'b2', fuel: { liters: 85, perLiter: 2.998 } },
   { id: 'r2', name: 'Hofer-Re-2024-77.pdf', supplier: 'Fa. Hofer Schlosserei', number: '2024-77', amount: 312.5, date: '2026-10-31', source: 'E-Mail', splits: [{ costCenterId: 'cc-oeaxb', categoryId: 'k-maint', percent: 100 }], suggestion: { lineId: 'b5', confidence: 0.97, why: 'Betrag und Lieferant identisch' } },
   { id: 'r3', name: 'Tankbeleg-17.10.jpg', supplier: 'Tankstelle LOLW', amount: 181.4, date: '2026-10-17', source: 'Bordbuch', note: 'Bordbuch 17.10., 62 L, bar bezahlt', fuel: { liters: 62, perLiter: 2.926 }, paidBy: 'm1', suggestion: undefined },
-  { id: 'r5', name: 'Flughafen-Wels-Okt-2026.pdf', supplier: 'Flughafen Wels Betriebs GmbH', number: 'LF-1026', amount: 312, date: '2026-11-01', source: 'E-Mail', suggestion: { lineId: 'b9', confidence: 0.96, why: 'Betrag und Absender passen' } },
-  { id: 'r4', name: 'Beitrag-OEFSV-2026.pdf', supplier: 'Österr. Fallschirmsportverband', number: 'M-2026-0180', amount: 180, date: '2026-11-01', source: 'E-Mail', suggestion: { lineId: 'b8', confidence: 0.95, why: 'Betrag und Absender passen' } },
+  { id: 'r5', name: 'Flughafen-Wels-Okt-2026.pdf', supplier: 'Flughafen Wels Betriebs GmbH', number: 'LF-1026', amount: 312, date: '2026-11-01', source: 'E-Mail', due: '2026-11-15', suggestion: { lineId: 'b9', confidence: 0.96, why: 'Betrag und Absender passen' } },
+  { id: 'r4', name: 'Beitrag-OEFSV-2026.pdf', supplier: 'Österr. Fallschirmsportverband', number: 'M-2026-0180', amount: 180, date: '2026-11-01', source: 'E-Mail', due: '2026-11-05', suggestion: { lineId: 'b8', confidence: 0.95, why: 'Betrag und Absender passen' } },
   // Cash expenses of members, waiting for the treasurer (see the seed of the expense requests in the ledger).
   { id: 'r9', name: 'Scan-Tankbeleg-OEDZA.pdf', supplier: 'Tankstelle LOLW', number: '20417', amount: 140.6, date: '2026-11-06', source: 'Bordbuch', note: 'Treibstoff OE-DZA, 48 L', fuel: { liters: 48, perLiter: 2.929 }, paidBy: 'm2' },
   { id: 'r10', name: 'Baumarkt-Wels-Kassenbon.jpg', supplier: 'Baumarkt Wels', number: '88104', amount: 36.9, date: '2026-11-05', source: 'Upload', note: 'Schrauben und Klebeband für den Hangar', paidBy: 'm1' },
   { id: 'r11', name: 'Scan-Tankbeleg-OEKFR.pdf', supplier: 'OMV Aviation', number: '55012', amount: 181.4, date: '2026-11-04', source: 'Upload', note: 'getankt vor dem Charterflug', fuel: { liters: 62, perLiter: 2.926 }, paidBy: 'm4' },
   { id: 'r12', name: 'Kaffeehaus-Rechnung.jpg', supplier: 'Café Zentral', number: '3391', amount: 24.5, date: '2026-10-30', source: 'Upload', note: 'Kaffee für den Vereinsabend', paidBy: 'm3' },
   // An invoice that arrived by e-mail; the SEPA debit follows a week later.
-  { id: 'r8', name: 'AAT-26-0911.pdf', supplier: 'Austro Aero Technik GmbH', number: 'AAT-26-0911', amount: 1840, date: '2026-11-05', source: 'E-Mail', splits: [{ costCenterId: 'cc-oedza', categoryId: 'k-maint', percent: 100 }] },
+  { id: 'r8', name: 'AAT-26-0911.pdf', supplier: 'Austro Aero Technik GmbH', number: 'AAT-26-0911', amount: 1840, date: '2026-11-05', source: 'E-Mail', due: '2026-11-19', splits: [{ costCenterId: 'cc-oedza', categoryId: 'k-maint', percent: 100 }] },
 ]
 
 // ---- Earlier years: booked and released, so the evaluations (maintenance of the last three years) have something to show ----

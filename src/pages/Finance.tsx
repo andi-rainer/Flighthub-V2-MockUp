@@ -6,7 +6,7 @@ import { PageHeader } from '../ui'
 import Accounts from './finance/Accounts'
 import Config from './finance/Config'
 import Invoices from './finance/Invoices'
-import Journal from './finance/Journal'
+import Journal, { type JournalPreset } from './finance/Journal'
 import Periods from './finance/Periods'
 import Result from './finance/Result'
 import { isTodo, lineStatus } from './finance/status'
@@ -44,7 +44,7 @@ export default function Finance() {
           </button>
         ))}
       </div>
-      {tab === 'bank' && <Journal key={`${params.get('konto')}|${params.get('monat')}|${params.get('offen')}`} ledger={ledger} preset={{ account: params.get('konto') ?? undefined, month: params.get('monat') ?? undefined, todo: params.get('offen') === '1' }} />}
+      {tab === 'bank' && <Journal key={`${params.get('konto')}|${params.get('monat')}|${params.get('offen')}|${params.get('beleg')}|${params.get('line')}`} ledger={ledger} preset={{ account: params.get('konto') ?? undefined, month: params.get('monat') ?? undefined, todo: params.get('offen') === '1', proof: (params.get('beleg') as JournalPreset['proof']) ?? undefined, line: params.get('line') ?? undefined }} />}
       {tab === 'rechnungen' && <Invoices ledger={ledger} />}
       {tab === 'zeitraeume' && <Periods ledger={ledger} onShow={(monat) => showBookings({ monat })} />}
       {tab === 'konten' && <Accounts ledger={ledger} />}
