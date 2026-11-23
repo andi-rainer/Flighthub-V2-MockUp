@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Check, ChevronLeft, ExternalLink, UserCheck, UserPlus } from 'lucide-react'
+import { Check, ChevronLeft, ExternalLink, FileText, UserCheck, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useBack } from '../../backTo'
@@ -9,7 +9,9 @@ import { toAbs } from '../../dates'
 import { flightNo, sportJumper, useApp, type Load } from '../../state'
 import { Badge, Banner, Button, Card, Drawer, PageHeader, RowMenu, Segmented } from '../../ui'
 import Closing from '../Closing'
-import { DayReportLink } from '../finance/DayReport'
+import { DayReportDrawer, useDayReview } from '../finance/DayReport'
+import QuickTicket from '../tickets/QuickTicket'
+import { DAY_CHECK, useDayCheck } from './dayCheck'
 import Bookings from './Bookings'
 import { capacityOf, dayName, fullName, hm, minutes, missingDuties, perPerson, sportPriceOn, tandemJumper, windowAt, windowLabel, withShifts, dayHours, type DayStatus, type ManifestDay } from './data'
 import DutyFields from './DutyFields'
@@ -39,7 +41,7 @@ export default function DayBoard() {
 }
 
 function Board({ day }: { day: ManifestDay }) {
-  const { loads, setLoads, setDays, bookings, setBookings, checkedIn, toggleCheckIn, weights, can, reservations, setReservations, settings, memberCan, docsOf } = useApp()
+  const { loads, setLoads, setDays, bookings, setBookings, checkedIn, toggleCheckIn, weights, can, reservations, setReservations, settings, memberCan, docsOf, ledger } = useApp()
   const nav = useNavigate()
   const { label, back } = useBack({ label: 'Manifest', to: '/manifest' })
   const [params, setParams] = useSearchParams()
@@ -50,7 +52,12 @@ function Board({ day }: { day: ManifestDay }) {
   const [docsFor, setDocsFor] = useState<string | null>(null)
   const [masterFor, setMasterFor] = useState<string | null>(null)
   const [payFor, setPayFor] = useState<string | null>(null)
+  const [ticketFor, setTicketFor] = useState<string | null>(null)
   const guestPay = useGuestPay()
+  // [Entwurf] The closing of the day and its check; `?pruefen=1` (task on the dashboard) opens the Tagesabschluss at once.
+  const closing = useDayCheck().current(ledger.dayReports, day.id)
+  const review = useDayReview()
+  const [reportOpen, setReportOpen] = useState(() => params.get('pruefen') === '1' && !!closing)
   const [dialog, setDialog] = useState<null | 'checkin' | 'kiosk' | 'edit' | 'flights' | 'cancel' | 'duties' | 'pilot'>(null)
 
   const missing = missingDuties(day, settings.roles)
@@ -178,6 +185,9 @@ function Board({ day }: { day: ManifestDay }) {
           <span className="mr-1 flex shrink-0 flex-col items-end gap-1">
             <Badge tone="info">Tandem · 2</Badge>
             {pay && (pay.state === 'offen' || pay.state === 'nachweis') && <PayBadge short pay={pay} name={j.name} onOpen={guestPay.mayClear ? () => setPayFor(b!.id) : undefined} />}
+            {b && pay && pay.state === 'vor_ort' && !pay.item && (guestPay.mayClear
+              ? <button onClick={() => setTicketFor(b.id)} title="Ticket anlegen" aria-label={`Ticket für ${j.name} anlegen`} className="rounded-full"><Badge tone="warn">Kein Ticket</Badge></button>
+              : <Badge tone="warn">Kein Ticket</Badge>)}
             {b && (mayAssign
               ? <button onClick={() => setMasterFor(b.id)} title="Tandemmaster wählen" aria-label={`Tandemmaster von ${j.name} wählen`} className="rounded-full"><Badge tone={b.masterId ? 'neutral' : 'warn'}>{b.masterId ? masterShort(b.masterId) : 'Master fehlt'}</Badge></button>
               : b.masterId && <Badge>{masterShort(b.masterId)}</Badge>)}
@@ -196,7 +206,7 @@ function Board({ day }: { day: ManifestDay }) {
         title={dayName(day.date)}
         subtitle={`${day.aircraft} · ${day.from}–${day.to}${day.note ? ` · ${day.note}` : ''}`}
         actions={<>
-          <Badge tone={statusTone[day.status]}>{statusLabel[day.status]}</Badge>
+          {day.status === 'abgeschlossen' && closing ? <Badge tone={DAY_CHECK[closing.state].tone}>{DAY_CHECK[closing.state].label}</Badge> : <Badge tone={statusTone[day.status]}>{statusLabel[day.status]}</Badge>}
           {running && mayCheckInOthers && <Button onClick={() => setDialog('checkin')}><UserCheck size={16} /> Springer am Platz</Button>}
           {running && mayCheckInOthers && day.windows.length + mine.length > 0 && <Button onClick={() => setDialog('kiosk')}><ExternalLink size={16} /> Tandem-Check-in</Button>}
           {day.status === 'geplant' && mayEditDay && <Button variant="primary" onClick={() => setStatus('aktiv')}>Tag starten</Button>}
@@ -215,7 +225,15 @@ function Board({ day }: { day: ManifestDay }) {
       {day.status === 'geplant' && <div className="mb-4"><Banner>Dieser Tag läuft noch nicht. Mit „Tag starten“ können Sportspringer einchecken.</Banner></div>}
       {settings.roles.length > 0 && <div className="mb-4"><DutySummary day={day} roles={settings.roles} onEdit={mayEditDay && open ? () => setDialog('duties') : undefined} /></div>}
       {!mayAssign && <div className="mb-4"><Banner>Du siehst das Manifest lesend. Springer einsetzen und Flüge steuern darf das Manifest-Team.</Banner></div>}
-      {day.status === 'abgeschlossen' && day.done && <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><Banner>{day.done.flights} Flüge, {day.done.jumps} Sprünge. Der Tag ist abgeschlossen.</Banner><DayReportLink dayId={day.id} /></div>}
+      {day.status === 'abgeschlossen' && day.done && (
+        <Card className="mb-4 flex flex-wrap items-center gap-3 p-4">
+          <div className="min-w-0 flex-1 basis-56">
+            <div className="font-medium">{day.done.flights} Flüge, {day.done.jumps} Sprünge</div>
+            {closing?.review.check && <div className="mt-0.5 text-sm text-muted">Festgeschrieben von {closing.review.check.by}, {closing.review.check.time} Uhr</div>}
+          </div>
+          {closing && <Button size="lg" variant={review.mayCheck(closing.report) ? 'primary' : 'secondary'} onClick={() => setReportOpen(true)}><FileText size={16} /> {review.mayCheck(closing.report) ? 'Tagesabschluss prüfen' : 'Tagesabschluss'}</Button>}
+        </Card>
+      )}
       {hasTandem && (
         <div className="mb-4 flex items-start justify-between gap-x-4">
           <Segmented value={tab} onChange={(v) => setParams(v === 'tandem' ? { tab: v } : {}, { replace: true })} options={[{ value: 'fluege', label: 'Flüge' }, { value: 'tandem', label: `Tandem-Buchungen (${mine.length})` }]} />
@@ -299,6 +317,8 @@ function Board({ day }: { day: ManifestDay }) {
           <MasterPick booking={bookings.find((x) => x.id === masterFor)!} onPicked={() => setMasterFor(null)} />
         )}
       </Drawer>
+      {reportOpen && closing && <DayReportDrawer report={closing.report} onClose={() => { setReportOpen(false); if (params.get('pruefen')) setParams({}, { replace: true }) }} />}
+      {ticketFor && bookings.find((x) => x.id === ticketFor) && <QuickTicket booking={bookings.find((x) => x.id === ticketFor)!} onClose={() => setTicketFor(null)} />}
       {payFor && bookings.find((x) => x.id === payFor) && <GuestPayDrawer booking={bookings.find((x) => x.id === payFor)!} onClose={() => setPayFor(null)} />}
       <Drawer open={!!docsFor} title={`Dokumente · ${docsFor ? byId(docsFor)?.name : ''}`} onClose={() => setDocsFor(null)}>
         {docsFor && <MemberDocuments memberId={docsFor} />}

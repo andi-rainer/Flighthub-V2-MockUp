@@ -14,9 +14,10 @@ import { type Ledger } from './ledger'
 import { cents, confLabel, Dot, euros } from './parts'
 import { suggestionOf, useRules } from './ruleStore'
 import { counterCandidates } from './status'
+import { DepositSplit, depositBlocked, recordDeposit } from './memberDocs'
 
 /** One part of the amount as it is edited: a target of its own. A line with one part books the whole amount. */
-interface Draft { key: number; amount: string; mode: 'konto' | 'buchung' | 'zahlung' | 'umbuchung'; memberId: string; payCode: string; splits: Split[]; receiptId?: string; /** Transfer: the other own account and its counter booking ('' = create one). */ accountId: string; counterId: string }
+interface Draft { key: number; amount: string; mode: 'konto' | 'buchung' | 'zahlung' | 'umbuchung'; memberId: string; /** Deposit above the cap (Obergrenze Guthaben): the treasurer's reason. */ overReason?: string; payCode: string; splits: Split[]; receiptId?: string; /** Transfer: the other own account and its counter booking ('' = create one). */ accountId: string; counterId: string }
 let draftKey = 1
 
 /**
@@ -25,7 +26,7 @@ let draftKey = 1
  * must add up to the whole amount before the booking is possible.
  */
 export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledger; onClose: () => void }) {
-  const { hasAccount, vouchers, tickets, loads } = useApp()
+  const { hasAccount, vouchers, tickets, loads, persona } = useApp()
   const accountMembers = members.filter((m) => hasAccount(m.id))
   const type = line.amount < 0 ? 'Kosten' : 'Ertrag'
   const rules = useRules()
@@ -60,7 +61,9 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
   const own = (d: Draft) => (single ? total : cents(d.amount) || 0)
   const remaining = total - drafts.reduce((n, d) => n + own(d), 0)
   const draftValid = (d: Draft) => own(d) > 0 && (d.mode === 'umbuchung' ? single && !!d.accountId : d.mode === 'konto' ? !!d.memberId : d.mode === 'zahlung' ? d.payCode !== '' : d.splits.reduce((n, s) => n + s.percent, 0) === 100 && d.splits.every((s) => s.categoryId))
-  const valid = remaining === 0 && drafts.every(draftValid)
+  const balanceOf = (id: string) => ledger.balances[id] ?? 0
+  const capBlocked = (d: Draft) => line.amount > 0 && d.mode === 'konto' && depositBlocked(d.memberId, balanceOf(d.memberId), own(d) / 100, d.overReason ?? '')
+  const valid = remaining === 0 && drafts.every(draftValid) && !drafts.some(capBlocked)
   const patch = (key: number, p: Partial<Draft>) => setDrafts((all) => all.map((d) => (d.key === key ? { ...d, ...p } : d)))
   const lineReceipts = ledger.receipts.filter((r) => r.lineId === line.id)
 
@@ -73,7 +76,12 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
   const transfer = single && drafts[0].mode === 'umbuchung' ? drafts[0] : null
   const book = () => {
     if (transfer) ledger.bookTransferLine(line.id, transfer.accountId, transfer.counterId || undefined)
-    else ledger.assign(line.id, build())
+    else {
+      ledger.assign(line.id, build())
+      // Every deposit on a Betriebskonto gets its Einzahlungsbestätigung, linked to this bank line.
+      const by = members.find((m) => m.id === persona.memberId)?.name ?? ''
+      if (line.amount > 0) for (const d of drafts.filter((x) => x.mode === 'konto')) recordDeposit({ memberId: d.memberId, amount: own(d) / 100, balance: balanceOf(d.memberId), via: 'bank', dateIso: line.date, lineId: line.id, reason: d.overReason, by })
+    }
     onClose()
   }
   const build = (): Target => single ? single1(drafts[0]) : { kind: 'teilung', parts: drafts.map((d): Part => ({ amount: own(d) / 100, target: single1(d), receiptId: d.receiptId })) }
@@ -110,6 +118,7 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
               ) : d.mode === 'konto' ? (
                 <div className="block text-sm">Mitglied
                   <MemberPicker ariaLabel="Mitglied" className="mt-1" value={d.memberId} allow={(m) => hasAccount(m.id)} rank={(m) => (sug?.kind === 'konto' && m.id === sug.memberId ? -1 : 0)} rankHint="Vorschlag zuerst" info={(m) => eur(ledger.balances[m.id] ?? m.balance)} onChange={(id) => id && patch(d.key, { memberId: id })} />
+                  {line.amount > 0 && d.memberId && <div className="mt-2"><DepositSplit memberId={d.memberId} balance={balanceOf(d.memberId)} amount={own(d) / 100} reason={d.overReason} onReason={(overReason) => patch(d.key, { overReason })} /></div>}
                 </div>
               ) : (
                 <SplitsEditor type={type} splits={d.splits} amount={own(d) / 100 * (line.amount < 0 ? -1 : 1)} ccs={ccs} cats={cats} onChange={(splits) => patch(d.key, { splits })} />

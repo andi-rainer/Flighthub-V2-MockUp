@@ -15,10 +15,10 @@ import ExpenseQueue from './Expenses'
 import { amountOk, codingOk, FilterBar, inRange, isFiltered, NO_FILTERS, textOk, type Filters } from './filters'
 import { type Ledger } from './ledger'
 import { cents, confLabel, Dot, SAFE } from './parts'
-import { ReceiptForm } from './ReceiptDialogs'
+import { ReceiptForm, useCountersign } from './ReceiptDialogs'
 import { RulesDrawer } from './Rules'
 import { suggestionOf, useRules, type Rule } from './ruleStore'
-import { counterCandidates, counterOf, isTodo, lineStatus, PROOF, proofOf, receiptsOf, STATUS, type LineStatus, type Proof } from './status'
+import { counterCandidates, counterOf, isTodo, isInternal, LATER, lineStatus, needsProof, ownStateOf, PROOF, proofOf, receiptsOf, STATUS, type LineStatus, type Proof } from './status'
 
 type View = 'alle' | 'bearbeiten'
 /** What the tab opens with when another tab sends the person here (an account, a month with open items, a kind of proof). */
@@ -26,7 +26,7 @@ export interface JournalPreset { account?: string; month?: string; todo?: boolea
 
 const COLS = 'md:grid-cols-[5.5rem_minmax(0,1.5fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_6.5rem_8.5rem]'
 const EDGE: Record<LineStatus, string> = {
-  offen: 'border-l-warn', beleg: 'border-l-warn/50', abweichung: 'border-l-warn/50', ausnahme: 'border-l-transparent', gebucht: 'border-l-transparent', gesperrt: 'border-l-slate-200 bg-slate-50/70',
+  offen: 'border-l-warn', beleg: 'border-l-warn/50', abweichung: 'border-l-warn/50', unterschrift: 'border-l-warn/50', eigenbeleg: 'border-l-transparent', ausnahme: 'border-l-warn/50', gebucht: 'border-l-transparent', gesperrt: 'border-l-slate-200 bg-slate-50/70',
 }
 const monthRange = (m: string) => ({ from: `${m}-01`, to: `${m}-${String(new Date(Number(m.slice(0, 4)), Number(m.slice(5)), 0).getDate()).padStart(2, '0')}` })
 
@@ -86,7 +86,7 @@ export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: J
           {(Object.keys(PROOF) as Proof[]).map((p) => <option key={p} value={p}>{PROOF[p]}</option>)}
         </select>
       </FilterBar>
-      {view === 'bearbeiten' && <MoreTodo ledger={ledger} onExempt={() => { setView('alle'); setProof('ausnahme') }} />}
+      {view === 'bearbeiten' && <MoreTodo ledger={ledger} />}
       {view === 'bearbeiten' && reviewExpenses && <ExpenseQueue ledger={ledger} />}
       {view === 'bearbeiten' && <AwaitingMoney />}
 
@@ -132,17 +132,18 @@ function haystack(l: BankLine, ledger: Ledger) {
  * [Entwurf] The other open points of the treasurer, counted, each a link to where it is done: invoices waiting for their payment, members in
  * the minus, flights to charge, bookings without a receipt. "Zu bearbeiten" is the one inbox; the work itself stays in its own place.
  */
-function MoreTodo({ ledger, onExempt }: { ledger: Ledger; onExempt: () => void }) {
+function MoreTodo({ ledger }: { ledger: Ledger }) {
   const { can, flights, hasAccount } = useApp()
   const unpaid = ledger.receipts.filter((r) => !r.lineId && !ledger.expenseOf(r.id))
   const minus = members.filter((m) => hasAccount(m.id) && (ledger.balances[m.id] ?? m.balance) < 0)
   const toCharge = flights.filter((x) => x.state === 'offen')
-  const exempt = ledger.lines.filter((l) => proofOf(l, ledger) === 'ausnahme')
+  const mayCountersign = useCountersign()
+  const toSign = ledger.lines.filter((l) => proofOf(l, ledger) === 'unterschrift' && mayCountersign(ledger.exempt[l.id]))
   const links: { label: string; hint: string; to?: string; onClick?: () => void }[] = [
     ...(unpaid.length ? [{ label: `${unpaid.length} Rechnungen ohne Zahlung`, hint: eur(unpaid.reduce((n, r) => n + r.amount, 0)), to: '/finanzen?tab=rechnungen&status=ohne' }] : []),
     ...(minus.length && can('billing.accounts.view') ? [{ label: `${minus.length} Mitglieder im Minus`, hint: eur(minus.reduce((n, m) => n + (ledger.balances[m.id] ?? m.balance), 0)), to: '/finanzen?tab=konten&filter=minus' }] : []),
     ...(toCharge.length && can('billing.flights.charge') ? [{ label: `${toCharge.length} Flüge zu verrechnen`, hint: eur(toCharge.reduce((n, x) => n + x.amount, 0)), to: '/bordbuch?nur=verrechnen' }] : []),
-    ...(exempt.length ? [{ label: `${exempt.length} Buchungen ohne Beleg`, hint: 'Ausnahmen', onClick: onExempt }] : []),
+    ...(toSign.length ? [{ label: `${toSign.length} Eigenbelege gegenzeichnen`, hint: eur(toSign.reduce((n, l) => n + l.amount, 0)), to: '/finanzen?tab=rechnungen&status=ausnahmen' }] : []),
   ]
   if (links.length === 0) return null
   const chip = 'inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm hover:border-brand hover:text-brand'
@@ -162,6 +163,7 @@ function Line({ line: l, status, ledger, rules, onOpen, onAssign, onInvoice, onL
   const s = target ? undefined : suggestionOf(l, ledger, rules)
   const rs = receiptsOf(l, ledger)
   const ex = ledger.exempt[l.id]
+  const own = ownStateOf(l, ledger)
   const counter = counterOf(l, ledger)
   const counterAt = !target && s?.target.kind === 'umbuchung' ? counterCandidates(l, s.target.accountId, ledger)[0] : undefined
   const proposed = !target && rs.length === 0 ? ledger.receipts.find((r) => !r.lineId && r.suggestion?.lineId === l.id) : undefined
@@ -184,7 +186,9 @@ function Line({ line: l, status, ledger, rules, onOpen, onAssign, onInvoice, onL
         {proposed && <button onClick={stop(() => onInvoice(proposed.id))} title="Vorgeschlagene Rechnung" className="max-w-[11rem] truncate rounded-full border border-dashed border-ok/60 px-2 py-px text-[11px] font-medium text-ok hover:underline">{proposed.supplier}{proposed.number ? ` ${proposed.number}` : ''}?</button>}
         {counter && <button onClick={stop(() => onLine(counter.id))} title="Gegenbuchung öffnen" className="inline-flex max-w-[11rem] items-center gap-1 truncate rounded-full bg-slate-100 px-2 py-px text-[11px] font-medium text-ink hover:underline"><ArrowLeftRight size={11} />{ledger.accountName(counter.accountId)}</button>}
         {counterAt && <span title="Gegenbuchung schon erfasst" className="inline-flex items-center gap-1 rounded-full border border-dashed border-line px-2 py-px text-[11px] text-muted"><ArrowLeftRight size={11} />{ledger.accountName(counterAt.accountId)} {dmy(counterAt.date)}</span>}
-        {rs.length === 0 && l.needsReceipt && target && <span className="rounded-full bg-warn-soft px-2 py-px text-[11px] font-medium text-amber-900">{ex ? (ex.own ? `Eigenbeleg ${ex.own.no}` : `Ohne Beleg: ${ex.reason}`) : 'Beleg fehlt'}</span>}
+        {rs.length === 0 && target && (needsProof(l, ledger)
+          ? <span className={clsx('rounded-full px-2 py-px text-[11px] font-medium', own === 'gedeckt' ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-amber-900')}>{ex ? (ex.own ? `Eigenbeleg ${ex.own.no}` : ex.reason === LATER ? LATER : 'Beleg fehlt') : 'Beleg fehlt'}</span>
+          : isInternal(l, ledger) && <span className="rounded-full bg-slate-100 px-2 py-px text-[11px] text-muted">Kein Beleg nötig</span>)}
       </div>
 
       <div className="min-w-0 text-sm">

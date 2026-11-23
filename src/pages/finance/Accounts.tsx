@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Banknote, Bell, ExternalLink, FileText, Landmark, Paperclip, Receipt, Search, Settings2 } from 'lucide-react'
+import { Banknote, Bell, ExternalLink, FileText, HandCoins, Landmark, Paperclip, Printer, Receipt, Search, Settings2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { TODAY_ISO, useApp } from '../../state'
@@ -12,7 +12,8 @@ import { dmy } from '../manifest/data'
 import { ExpenseDrawer, ExpenseForm } from './Expense'
 import { type Entry, type Ledger } from './ledger'
 import { openReceiptFile } from './parts'
-import { payRef, StatementDrawer, StatementSheet } from './Statement'
+import { InterimDrawer, payRef, StatementDrawer, StatementSheet } from './Statement'
+import { CapSettings, capOf, DepositSplit, depositBlocked, DocChip, docOfEntry, DOC_TITLE, interimOf, invoiceNo, isCharge, MoneyDocDrawer, PayoutPanel, recordDeposit, setCaps, useMoneyDocs, type Interim, type MoneyDoc } from './memberDocs'
 
 const FROM_ACCOUNTS = comingFrom({ label: 'Betriebskonten', to: '/finanzen?tab=konten' })
 
@@ -39,7 +40,8 @@ export default function Accounts({ ledger }: { ledger: Ledger }) {
   const [expense, setExpense] = useState(false)
   const [remind, setRemind] = useState<string[] | null>(null)
   const [stmt, setStmt] = useState<string | null>(null)
-  const [limits, setLimits] = useState<{ remind: string; low: string } | null>(null)
+  const [limits, setLimits] = useState<{ remind: string; low: string; cap: string; caps: { memberId: string; amount: string }[] } | null>(null)
+  const money = useMoneyDocs()
   const bal = (m: Member) => ledger.balances[m.id] ?? 0
   // Only members whose membership type has a Betriebskonto show up here at all.
   const withAccount = members.filter((m) => hasAccount(m.id))
@@ -65,7 +67,7 @@ export default function Accounts({ ledger }: { ledger: Ledger }) {
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat compact label="Offen bei Mitgliedern" value={eur(owed)} tone={owed < 0 ? 'bad' : undefined} hint={`${inMinus} im Minus`} />
-        <Stat compact label="Guthaben der Mitglieder" value={eur(credit)} />
+        <Stat compact label="Vorauszahlungen" value={eur(credit)} hint={`${withAccount.filter((m) => bal(m) > 0).length} mit Guthaben`} />
         <Stat compact label="Offene Posten" value={`${overdue.length}`} tone={overdue.length ? 'bad' : undefined} hint={`ab ${eur(rules.remindBelow)}`} />
         <Link to={`/finanzen?tab=bank&konto=${CASH_ID}`} className="block"><Stat compact label="Kassa (Bargeld)" value={eur(ledger.cash)} hint="Buchungen der Kassa" /></Link>
       </div>
@@ -81,18 +83,19 @@ export default function Accounts({ ledger }: { ledger: Ledger }) {
         ))}
         {view === 'alle' && chips.length > 0 && <button onClick={() => setChips([])} className="text-sm text-brand">Zurücksetzen</button>}
         <span className="ml-auto text-xs text-muted">{list.length} von {view === 'offen' ? overdue.length : withAccount.length}{hidden > 0 && view === 'alle' && ` · ${hidden} ohne Konto nicht gelistet`}</span>
-        {can('billing.accounts.manage') && <Button onClick={() => setLimits({ remind: String(-rules.remindBelow), low: String(rules.lowBelow) })}><Settings2 size={16} /> Grenzen</Button>}
+        {can('billing.accounts.manage') && <Button onClick={() => setLimits({ remind: String(-rules.remindBelow), low: String(rules.lowBelow), cap: String(money.defaultCap), caps: Object.entries(money.caps).map(([memberId, n]) => ({ memberId, amount: String(n) })) })}><Settings2 size={16} /> Grenzen</Button>}
         <Button onClick={() => setExpense(true)}><Receipt size={16} /> Auslage erfassen</Button>
         <Button onClick={() => setPicking(true)}><Banknote size={16} /> Einzahlung bar buchen</Button>
       </div>
 
       {limits && (
-        <ActionPanel title="Grenzen der Betriebskonten" confirm="Speichern" onCancel={() => setLimits(null)} disabled={!(Number(limits.remind) > 0) || !(Number(limits.low) >= 0)}
-          onConfirm={() => { guarded('billing.accounts.manage', () => { ledger.setAccountRules({ remindBelow: -Math.abs(Number(limits.remind)), lowBelow: Math.abs(Number(limits.low)) }); setLimits(null) }) }}>
+        <ActionPanel title="Grenzen der Betriebskonten" confirm="Speichern" onCancel={() => setLimits(null)} disabled={!(Number(limits.remind) > 0) || !(Number(limits.low) >= 0) || !(Number(limits.cap) > 0) || limits.caps.some((c) => !(Number(c.amount) > 0))}
+          onConfirm={() => { guarded('billing.accounts.manage', () => { ledger.setAccountRules({ remindBelow: -Math.abs(Number(limits.remind)), lowBelow: Math.abs(Number(limits.low)) }); setCaps(Number(limits.cap), Object.fromEntries(limits.caps.map((c) => [c.memberId, Number(c.amount)]))); setLimits(null) }) }}>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-medium">Offene Posten ab einem Minus von (€)<input inputMode="decimal" value={limits.remind} onChange={(e) => setLimits({ ...limits, remind: e.target.value })} className={clsx(field, 'mt-1 w-full tabular-nums')} /></label>
             <label className="block text-sm font-medium">Hinweis an das Mitglied unter einem Guthaben von (€)<input inputMode="decimal" value={limits.low} onChange={(e) => setLimits({ ...limits, low: e.target.value })} className={clsx(field, 'mt-1 w-full tabular-nums')} /></label>
           </div>
+          <div className="mt-3 border-t border-line pt-3"><CapSettings value={limits} onChange={(v) => setLimits({ ...limits, ...v })} /></div>
         </ActionPanel>
       )}
 
@@ -132,6 +135,7 @@ export default function Accounts({ ledger }: { ledger: Ledger }) {
               <th className="px-4 py-2 font-medium">Mitglied</th>
               <th className="hidden px-4 py-2 font-medium sm:table-cell">{view === 'offen' ? 'Letzte Einzahlung' : 'Letzte Buchung'}</th>
               <th className="hidden px-4 py-2 font-medium md:table-cell">Zahlungserinnerung</th>
+              <th className="hidden px-4 py-2 text-right font-medium lg:table-cell">Vorauszahlung</th>
               <th className="px-4 py-2 text-right font-medium">Kontostand</th><th className="w-52 px-2 py-3" />
             </tr>
           </thead>
@@ -144,16 +148,17 @@ export default function Accounts({ ledger }: { ledger: Ledger }) {
               return (
                 <tr key={m.id} onClick={() => nav(`/mitglieder/${m.id}?tab=konto`, FROM_ACCOUNTS)} className="cursor-pointer hover:bg-slate-50">
                   {view === 'offen' && <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}><input type="checkbox" aria-label={`${m.name} auswählen`} checked={sel.includes(m.id)} onChange={() => setSel(sel.includes(m.id) ? sel.filter((id) => id !== m.id) : [...sel, m.id])} /></td>}
-                  <td className="px-4 py-2 font-medium">{m.name}{windDown(m.id) && <span className="ml-2"><Badge tone="warn">läuft aus</Badge></span>}</td>
+                  <td className="whitespace-nowrap px-4 py-2 font-medium">{m.name}{windDown(m.id) && <span className="ml-2"><Badge tone="warn">läuft aus</Badge></span>}</td>
                   <td className="hidden px-4 py-2 text-muted sm:table-cell">{view === 'offen' ? (pay ? `${pay.date} ${eur(pay.amount)}` : '–') : last ? `${last.date} ${last.text}` : '–'}</td>
                   <td className="hidden px-4 py-2 md:table-cell">{r ? <span className="text-xs text-muted">erinnert am {dm(r.at)}{r.count > 1 && ` (${r.count}×)`}</span> : bal(m) < 0 ? <span className="text-xs text-muted">nicht erinnert</span> : null}</td>
+                  <td className="hidden px-4 py-2 text-right tabular-nums text-brand lg:table-cell">{bal(m) > 0 ? <span className={clsx(bal(m) > capOf(m.id, money) && 'font-semibold text-amber-900')}>{eur(bal(m))}</span> : ''}</td>
                   <td className={clsx('px-4 py-2 text-right font-semibold tabular-nums', bal(m) < 0 && 'text-bad')}>{eur(bal(m))}</td>
                   <td className="px-2 py-1.5">
                     <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                       {view === 'offen' ? <Button onClick={() => setRemind([m.id])}><Bell size={14} /> Erinnern</Button> : <Button onClick={() => setOpenId(m.id)}>Einzahlung</Button>}
                       <RowMenu actions={[
                         { label: 'Konto öffnen', onSelect: () => nav(`/mitglieder/${m.id}?tab=konto`, FROM_ACCOUNTS) },
-                        { label: 'Kontoauszug ansehen', onSelect: () => setStmt(m.id) },
+                        { label: 'Monatsrechnung ansehen', onSelect: () => setStmt(m.id) },
                         ...(view === 'offen' ? [{ label: 'Einzahlung buchen', onSelect: () => setOpenId(m.id) }] : bal(m) < 0 ? [{ label: 'Zahlungserinnerung senden', onSelect: () => setRemind([m.id]) }] : []),
                       ]} />
                     </div>
@@ -161,7 +166,7 @@ export default function Accounts({ ledger }: { ledger: Ledger }) {
                 </tr>
               )
             })}
-            {list.length === 0 && <tr><td colSpan={6} className="px-4 py-6 text-center text-muted">{view === 'offen' ? `Kein Konto liegt unter ${eur(rules.remindBelow)}.` : 'Keine Konten.'}</td></tr>}
+            {list.length === 0 && <tr><td colSpan={7} className="px-4 py-6 text-center text-muted">{view === 'offen' ? `Kein Konto liegt unter ${eur(rules.remindBelow)}.` : 'Keine Konten.'}</td></tr>}
           </tbody>
         </table>
         {paging.bar}
@@ -184,7 +189,7 @@ export default function Accounts({ ledger }: { ledger: Ledger }) {
 const stmtSteps: { id: 'entwurf' | 'freigabe' | 'versendet'; label: string }[] = [{ id: 'entwurf', label: 'Entwurf' }, { id: 'freigabe', label: 'Zur Freigabe' }, { id: 'versendet', label: 'Versendet' }]
 const STMT_MONTH = '2026-10'
 
-/** Month-end statements: drafted automatically, sent only after the treasurer approved them. The state is kept in the ledger, the members see it in Mein Konto. */
+/** [Entwurf] Monatsrechnungen (the income document of the Betriebskonten): drafted automatically, sent only after the treasurer approved them. The state is kept in the ledger, the members see it in Mein Konto. */
 function Statements({ count, minus, plus }: { count: number; minus: number; plus: number }) {
   const { ledger, can, persona } = useApp()
   const { guarded } = useSession()
@@ -197,8 +202,8 @@ function Statements({ count, minus, plus }: { count: number; minus: number; plus
   return (
     <Card className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5">
       <div className="min-w-0">
-        <div className="font-semibold">Kontoauszüge Oktober 2026</div>
-        <div className="text-xs text-muted">{count} Auszüge · {minus} im Minus (mit Zahlungshinweis) · {plus} im Plus</div>
+        <div className="font-semibold">Monatsrechnungen Oktober 2026</div>
+        <div className="text-xs text-muted">{count} Rechnungen · {minus} im Minus (mit Zahlungshinweis) · {plus} mit Guthaben</div>
       </div>
       <ol className="flex items-center gap-1.5 text-xs">
         {stmtSteps.map((x, i) => (
@@ -229,7 +234,7 @@ function StatementPreview({ open, onClose }: { open: boolean; onClose: () => voi
   const [id, setId] = useState('m4')
   const m = members.find((x) => x.id === id)
   return (
-    <Drawer open={open} title="Vorschau Kontoauszüge Oktober 2026" onClose={onClose}>
+    <Drawer open={open} title="Vorschau Monatsrechnungen Oktober 2026" onClose={onClose}>
       <div className="space-y-4">
         <MemberPicker value={id} onChange={setId} allow={(x) => hasAccount(x.id)} ariaLabel="Mitglied für die Vorschau" info={(x) => <span className={clsx('tabular-nums', (ledger.balances[x.id] ?? 0) < 0 && 'text-bad')}>{eur(ledger.balances[x.id] ?? 0)}</span>} />
         {m && <StatementSheet member={m} month="10" balance={ledger.balances[m.id] ?? 0} history={ledger.history[m.id] ?? []} />}
@@ -261,7 +266,7 @@ function ReminderDrawer({ ids, ledger, onClose, onSent }: { ids: string[] | null
           <div className="font-semibold">Dein Betriebskonto ist im Minus</div>
           <p>Hallo {m.name.split(' ')[0]}, auf deinem Betriebskonto fehlen {eur(Math.max(0, -bal))}. Bitte zahle den Betrag ein, bar beim Kassier oder per Überweisung.</p>
           <div className="rounded-lg bg-slate-50 p-3 text-xs">IBAN {club.iban}<br />Verwendungszweck: <b>{payRef(m)}</b></div>
-          <p className="text-xs text-muted">Der aktuelle Kontoauszug hängt als PDF an.</p>
+          <p className="text-xs text-muted">Die letzte Monatsrechnung hängt als PDF an.</p>
         </div>
         {ledger.reminders[m.id] && <p className="text-xs text-muted">Zuletzt erinnert am {dm(ledger.reminders[m.id].at)} von {ledger.reminders[m.id].by}.</p>}
       </div>
@@ -295,9 +300,18 @@ function SourceLink({ e, ledger }: { e: Entry; ledger: Ledger }) {
 /** Cash deposit, assigning incoming transfers and the booking history of one Betriebskonto. Used in a drawer and in the Mitgliederakte. */
 export function AccountPanel({ member, ledger, wide = false }: { member: Member; ledger: Ledger; wide?: boolean }) {
   const nav = useNavigate()
-  const { club, can } = useApp()
+  const { club, can, persona } = useApp()
   const { guarded } = useSession()
+  const money = useMoneyDocs()
   const [amount, setAmount] = useState('')
+  const [reason, setReason] = useState('')
+  const [reasons, setReasons] = useState<Record<string, string>>({})
+  const [paying, setPaying] = useState(false)
+  const [doc, setDoc] = useState<MoneyDoc | null>(null)
+  const [justMade, setJustMade] = useState<MoneyDoc | null>(null)
+  const [stmtMonth, setStmtMonth] = useState<string | undefined>(undefined)
+  const [interim, setInterim] = useState<Interim | null>(null)
+  const interims = money.interims.filter((z) => z.memberId === member.id)
   const [text, setText] = useState('')
   const [depositing, setDepositing] = useState(false)
   const [expensing, setExpensing] = useState(false)
@@ -316,7 +330,14 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
   const history = ledger.history[member.id] ?? []
   const paging = usePaging(history, `${member.id}|${history.length}`, [10, 25, 50])
   const reminder = ledger.reminders[member.id]
-  const closeDeposit = () => { setDepositing(false); setAmount(''); setText(''); setDay(TODAY_ISO) }
+  const closeDeposit = () => { setDepositing(false); setAmount(''); setText(''); setDay(TODAY_ISO); setReason('') }
+  const by = members.find((m) => m.id === persona.memberId)?.name ?? ''
+  /** A deposit is booked and its document (Quittung for cash, Einzahlungsbestätigung for a transfer) is made at once. Above the cap only by the treasurer. */
+  const deposit = (via: 'bank' | 'kassa', value: number, dateIso: string, book: () => void, why = '', lineId?: string) => {
+    const run = () => { book(); setJustMade(recordDeposit({ memberId: member.id, amount: value, balance, via, dateIso, lineId, reason: why, by })) }
+    if (balance + value > capOf(member.id, money)) guarded('billing.accounts.manage', run)
+    else run()
+  }
   const manage = wide && can('billing.accounts.manage')
   const stornoEntry = stornoAt !== null ? history[stornoAt] : undefined
 
@@ -325,20 +346,31 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
       <div className="rounded-xl bg-slate-50 p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-muted">Kontostand</div>
-            <div className={clsx('text-3xl font-semibold tabular-nums', balance < 0 && 'text-bad')}>{eur(balance)}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted">{balance > 0 ? 'Guthaben' : 'Kontostand'}</div>
+            <div className={clsx('text-3xl font-semibold tabular-nums', balance < 0 && 'text-bad', balance > 0 && 'text-brand')}>{eur(balance)}</div>
+            {balance > 0 && <div className={clsx('text-xs', balance > capOf(member.id, money) ? 'font-medium text-amber-900' : 'text-muted')}>Obergrenze {eur(capOf(member.id, money))}</div>}
           </div>
-          {!depositing && !expensing && (
+          {!depositing && !expensing && !paying && (
             <div className="flex flex-col items-end">
               <button onClick={() => setDepositing(true)} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-muted hover:bg-slate-100 hover:text-ink"><Banknote size={15} /> Bar einzahlen</button>
               <button onClick={() => setExpensing(true)} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-muted hover:bg-slate-100 hover:text-ink"><Receipt size={15} /> Auslage erfassen</button>
               {balance < 0 && <button onClick={() => setRemind(true)} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-muted hover:bg-slate-100 hover:text-ink"><Bell size={15} /> Zahlungserinnerung</button>}
+              {balance > 0 && can('billing.accounts.manage') && <button onClick={() => setPaying(true)} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-muted hover:bg-slate-100 hover:text-ink"><HandCoins size={15} /> Guthaben auszahlen</button>}
             </div>
           )}
         </div>
         {reminder && <div className="mt-1 text-xs text-muted">erinnert am {dm(reminder.at)}{reminder.count > 1 && ` (${reminder.count}×)`} · {reminder.by}</div>}
         <div className="mt-2 border-t border-line pt-2 text-xs text-muted">IBAN {club.iban} · Verwendungszweck <b className="text-ink">{payRef(member)}</b></div>
       </div>
+
+      {justMade && (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-ok/30 bg-ok-soft px-3 py-2 text-sm">
+          <span>{DOC_TITLE[justMade.kind]} {justMade.no}</span>
+          <span className="flex items-center gap-2"><Button onClick={() => setDoc(justMade)}><Printer size={14} /> Drucken</Button><button aria-label="Schließen" onClick={() => setJustMade(null)} className="text-xs text-muted hover:text-ink">✕</button></span>
+        </div>
+      )}
+
+      {paying && <PayoutPanel member={member} ledger={ledger} onDone={(d) => { setPaying(false); if (d) setJustMade(d) }} />}
 
       {expensing && (
         <section className="space-y-3 rounded-xl border border-line p-3">
@@ -352,7 +384,7 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
           <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Bar einzahlen</h3><button onClick={closeDeposit} className="text-xs text-muted hover:text-ink">Abbrechen</button></div>
           <div className="flex gap-2">
             <input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={suggested ? String(suggested) : 'Betrag'} className="h-10 min-w-0 flex-1 rounded-lg border border-line px-3 tabular-nums outline-none focus:border-brand" />
-            <Button variant="primary" disabled={value <= 0 || !day || day > TODAY_ISO} onClick={() => { ledger.cashDeposit(member.id, value, text, day); closeDeposit() }}>Buchen {value > 0 ? eur(value) : ''}</Button>
+            <Button variant="primary" disabled={value <= 0 || !day || day > TODAY_ISO || depositBlocked(member.id, balance, value, reason)} onClick={() => { deposit('kassa', value, day, () => ledger.cashDeposit(member.id, value, text, day), reason); closeDeposit() }}>Buchen {value > 0 ? eur(value) : ''}</Button>
           </div>
           <div className="flex gap-2">
             <label className="shrink-0 text-xs text-muted">Eingezahlt am<input type="date" value={day} max={TODAY_ISO} onChange={(e) => setDay(e.target.value)} className="mt-0.5 block h-10 rounded-lg border border-line px-2 text-sm text-ink outline-none focus:border-brand" /></label>
@@ -362,6 +394,7 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
             {[50, 100, 200, 500].map((n) => <button key={n} onClick={() => setAmount(String(n))} className="rounded-md bg-slate-100 px-2 py-1 text-xs hover:bg-slate-200">{eur(n)}</button>)}
             {value > 0 && <span className="ml-auto text-xs text-muted">Kassa {eur(ledger.cash)} → <b className="text-ink">{eur(ledger.cash + value)}</b></span>}
           </div>
+          <DepositSplit memberId={member.id} balance={balance} amount={value} reason={reason} onReason={setReason} />
         </section>
       )}
 
@@ -373,10 +406,11 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
             return (
               <div key={a.id} className="space-y-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-3 text-sm">
                 <div className="flex items-center justify-between gap-3"><span>{a.kind === 'bar' ? 'Bar übergeben' : 'Überwiesen'} am {dm(a.date)}{a.note && <span className="text-muted"> · {a.note}</span>}</span><b className="tabular-nums">{eur(a.amount)}</b></div>
+                {(a.kind === 'bar' || match) && <DepositSplit memberId={member.id} balance={balance} amount={a.amount} reason={reasons[a.id]} onReason={(r) => setReasons({ ...reasons, [a.id]: r })} />}
                 {a.kind === 'bar'
-                  ? <Button onClick={() => { ledger.cashDeposit(member.id, a.amount, '', a.date); ledger.resolveAnnouncement(a.id) }}>Bar einbuchen {eur(a.amount)}</Button>
+                  ? <Button disabled={depositBlocked(member.id, balance, a.amount, reasons[a.id] ?? '')} onClick={() => deposit('kassa', a.amount, a.date, () => { ledger.cashDeposit(member.id, a.amount, '', a.date); ledger.resolveAnnouncement(a.id) }, reasons[a.id])}>Bar einbuchen {eur(a.amount)}</Button>
                   : match
-                    ? <div className="flex items-center gap-3"><span className="min-w-0 flex-1 truncate text-xs text-muted">Bankzeile: {match.text} · {dm(match.date)}</span><Button onClick={() => { ledger.assign(match.id, { kind: 'konto', memberId: member.id }); ledger.resolveAnnouncement(a.id) }}>Zuweisen</Button></div>
+                    ? <div className="flex items-center gap-3"><span className="min-w-0 flex-1 truncate text-xs text-muted">Bankzeile: {match.text} · {dm(match.date)}</span><Button disabled={depositBlocked(member.id, balance, a.amount, reasons[a.id] ?? '')} onClick={() => deposit('bank', match.amount, match.date, () => { ledger.assign(match.id, { kind: 'konto', memberId: member.id }); ledger.resolveAnnouncement(a.id) }, reasons[a.id], match.id)}>Zuweisen</Button></div>
                     : <div className="text-xs text-muted">Noch keine passende Überweisung auf dem Konto.</div>}
                 <button onClick={() => ledger.resolveAnnouncement(a.id)} className="text-xs text-muted hover:text-ink">Meldung schließen</button>
               </div>
@@ -389,10 +423,13 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
         <section className="space-y-2">
           <h3 className="flex items-center gap-2 text-sm font-semibold"><Landmark size={16} /> Diese Überweisung passt zum Namen</h3>
           {likely.map((l) => (
-            <div key={l.id} className="flex items-center gap-3 rounded-xl border border-warn/40 bg-warn-soft p-3 text-sm">
-              <div className="min-w-0 flex-1"><div className="truncate font-medium">{l.text}</div><div className="text-xs text-muted">{dmy(l.date)}</div></div>
-              <div className="font-semibold tabular-nums">{eur(l.amount)}</div>
-              <Button onClick={() => ledger.assign(l.id, { kind: 'konto', memberId: member.id })}>Zuweisen</Button>
+            <div key={l.id} className="space-y-2 rounded-xl border border-warn/40 bg-warn-soft p-3 text-sm">
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1"><div className="truncate font-medium">{l.text}</div><div className="text-xs text-muted">{dmy(l.date)}</div></div>
+                <div className="font-semibold tabular-nums">{eur(l.amount)}</div>
+                <Button disabled={depositBlocked(member.id, balance, l.amount, reasons[l.id] ?? '')} onClick={() => deposit('bank', l.amount, l.date, () => ledger.assign(l.id, { kind: 'konto', memberId: member.id }), reasons[l.id], l.id)}>Zuweisen</Button>
+              </div>
+              <div className="rounded-lg bg-white/70"><DepositSplit memberId={member.id} balance={balance} amount={l.amount} reason={reasons[l.id]} onReason={(r) => setReasons({ ...reasons, [l.id]: r })} /></div>
             </div>
           ))}
         </section>
@@ -404,7 +441,8 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
 
   const list = (
     <section className="space-y-3">
-      <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Buchungen</h3><Button onClick={() => setStmt(true)}><FileText size={14} /> Kontoauszug</Button></div>
+      <div className="flex items-center justify-between"><h3 className="text-sm font-semibold">Buchungen</h3><Button onClick={() => { setStmtMonth(undefined); setStmt(true) }}><FileText size={14} /> Monatsrechnung</Button></div>
+      {interims.length > 0 && <div className="flex flex-wrap items-center gap-1 text-xs text-muted">Zwischenrechnungen{interims.map((z) => <DocChip key={z.no} label={`${z.no} · ${eur(z.total)}`} onOpen={() => setInterim(z)} />)}</div>}
       {stornoEntry && stornoAt !== null && (
         <ActionPanel danger title={`Storno: ${stornoEntry.text}`} confirm={`${eur(-stornoEntry.amount)} stornieren`} disabled={!why.trim()} onCancel={() => { setStornoAt(null); setWhy('') }}
           onConfirm={() => guarded('billing.accounts.manage', () => { ledger.storno(member.id, stornoAt, why); setStornoAt(null); setWhy('') })}>
@@ -414,9 +452,12 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
         </ActionPanel>
       )}
       <div className="divide-y divide-line rounded-xl border border-line">
-        {paging.rows.map((e, k) => { const i = paging.start + k; return (
+        {paging.rows.map((e, k) => { const i = paging.start + k; const d = docOfEntry(member.id, e, money.docs); const mm = e.date.slice(3, 5); return (
           <div key={i} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-            <span className={clsx(e.reversed && 'text-muted line-through')}><span className="text-muted">{e.date}</span> {e.text}{e.storno && <Badge>Storno</Badge>}{e.receiptId && <ReceiptLink ledger={ledger} id={e.receiptId} />}<SourceLink e={e} ledger={ledger} /></span>
+            <span className={clsx(e.reversed && 'text-muted line-through')}><span className="text-muted">{e.date}</span> {e.text}{e.storno && <Badge>Storno</Badge>}{e.receiptId && <ReceiptLink ledger={ledger} id={e.receiptId} />}<SourceLink e={e} ledger={ledger} />
+              {d && <DocChip label={`${DOC_TITLE[d.kind]} ${d.no}`} onOpen={() => setDoc(d)} />}
+              {(() => { const z = isCharge(e) ? interimOf(member.id, e, money) : undefined; return z && <DocChip label={`Zwischenrechnung ${z.no}`} onOpen={() => setInterim(z)} /> })()}
+              {isCharge(e) && !e.storno && !interimOf(member.id, e, money) && <DocChip tone={ledger.statements[`2026-${mm}`]?.state === 'versendet' ? 'ok' : 'muted'} label={`Monatsrechnung ${invoiceNo(member, mm)}`} onOpen={() => { setStmtMonth(mm); setStmt(true) }} />}</span>
             <span className="flex items-center gap-3">
               <span className={clsx('font-medium tabular-nums', e.amount < 0 ? 'text-bad' : 'text-ok', e.reversed && 'opacity-50')}>{e.amount > 0 ? '+ ' : '− '}{eur(Math.abs(e.amount))}</span>
               {manage && !e.reversed && !e.storno && !e.receiptId && <button onClick={() => { setStornoAt(i); setWhy('') }} className="text-xs text-muted hover:text-bad">Stornieren</button>}
@@ -425,7 +466,9 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
         )})}
         {history.length > 10 && paging.bar}
       </div>
-      <StatementDrawer memberId={stmt ? member.id : null} onClose={() => setStmt(false)} />
+      <StatementDrawer memberId={stmt ? member.id : null} month={stmtMonth} onClose={() => setStmt(false)} />
+      <MoneyDocDrawer doc={doc} onClose={() => setDoc(null)} />
+      <InterimDrawer interim={interim} onClose={() => setInterim(null)} />
       <ReminderDrawer ids={remind ? [member.id] : null} ledger={ledger} onClose={() => setRemind(false)} onSent={() => undefined} />
     </section>
   )

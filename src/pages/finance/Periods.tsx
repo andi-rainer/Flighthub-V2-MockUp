@@ -11,7 +11,8 @@ import { useActor } from '../tickets/parts'
 import { monthOf, type Ledger } from './ledger'
 import { monthLabel } from './parts'
 import { balanceAt, computeClosing, monthEnd, useExtras, type Recon } from './results'
-import { isTodo, lineStatus, receiptsOf } from './status'
+import { ownCsv } from './Exceptions'
+import { isTodo, lineStatus, needsProof, ownStateOf, PROOF, proofOf, receiptsOf } from './status'
 
 type View = '' | 'monat' | 'jahr' | 'pruefung' | 'export'
 const thisYear = Number(TODAY_ISO.slice(0, 4))
@@ -41,7 +42,8 @@ function useChecks(ledger: Ledger) {
     return [
       { id: 'ende', label: m < thisMonth ? 'Monat ist zu Ende' : 'Monat läuft noch', open: m < thisMonth ? 0 : 1 },
       { id: 'zuordnen', label: 'Alle Buchungen zugeordnet', open: st.filter((s) => s === 'offen').length, go: bookings, goLabel: 'Zu den Buchungen' },
-      { id: 'beleg', label: 'Jede Buchung mit Rechnung oder Ausnahme', open: st.filter((s) => s === 'beleg' || s === 'abweichung').length, go: bookings, goLabel: 'Zu den Buchungen' },
+      { id: 'beleg', label: 'Jede Buchung mit Rechnung oder Eigenbeleg', open: st.filter((s) => s === 'beleg' || s === 'abweichung' || s === 'ausnahme').length, go: bookings, goLabel: 'Zu den Buchungen' },
+      ...(lines.some((l) => ledger.exempt[l.id]?.own) ? [{ id: 'unterschrift', label: 'Eigenbelege mit zwei Unterschriften', open: st.filter((s) => s === 'unterschrift').length, go: () => setParams({ tab: 'rechnungen', status: 'ausnahmen' }), goLabel: 'Zum Gegenzeichnen' }] : []),
       { id: 'auslagen', label: 'Auslagen entschieden', open: expenses.length, go: () => setParams({ tab: 'bank', offen: '1' }), goLabel: 'Zu den Auslagen' },
       { id: 'fluege', label: 'Flüge verrechnet', open: toCharge.length, go: () => navigate('/bordbuch?nur=verrechnen'), goLabel: 'Zum Bordbuch' },
       { id: 'konten', label: 'Kontenabgleich (Soll und Ist je Konto)', open: unchecked.length },
@@ -142,7 +144,8 @@ function MonthClose({ month, ledger, onClose }: { month: string; ledger: Ledger;
   const rel = ledger.released[month]
   const lines = ledger.lines.filter((l) => monthOf(l.date) === month)
   const invoices = ledger.receipts.filter((r) => lines.some((l) => l.id === r.lineId)).length
-  const exceptions = lines.filter((l) => ledger.exempt[l.id] && receiptsOf(l, ledger).length === 0)
+  const exceptions = lines.filter((l) => ledger.done[l.id] && needsProof(l, ledger) && receiptsOf(l, ledger).length === 0 && ownStateOf(l, ledger) !== 'gedeckt')
+  const ownCovered = lines.filter((l) => needsProof(l, ledger) && receiptsOf(l, ledger).length === 0 && ownStateOf(l, ledger) === 'gedeckt').length
   const ready = checks.every((c) => c.open === 0)
   const release = () => { guarded('billing.periods.release', () => ledger.release(month, actor)); onClose() }
   const reopen = () => { guarded('billing.periods.release', () => { ledger.reopen(month, actor); x.dropRecons(month) }); onClose() }
@@ -191,13 +194,13 @@ function MonthClose({ month, ledger, onClose }: { month: string; ledger: Ledger;
         </section>
 
         <section>
-          <h3 className="mb-2 font-semibold">Ohne Beleg ({exceptions.length})</h3>
-          {exceptions.length === 0 ? <p className="text-muted">Jede Buchung hat eine Rechnung.</p> : (
+          <h3 className="mb-2 font-semibold">Ohne Beleg ({exceptions.length}){ownCovered > 0 && <span className="ml-2 text-xs font-normal text-muted">{ownCovered} durch Eigenbeleg gedeckt</span>}</h3>
+          {exceptions.length === 0 ? <p className="text-muted">Jede Buchung hat eine Rechnung oder einen Eigenbeleg.</p> : (
             <div className="divide-y divide-line rounded-xl border border-line">
               {exceptions.map((l) => { const e = ledger.exempt[l.id]; return (
                 <div key={l.id} className="grid grid-cols-[4rem_minmax(0,1fr)_6rem] gap-x-3 px-3 py-2">
                   <span className="tabular-nums text-muted">{dmy(l.date).slice(0, 6)}</span>
-                  <span className="min-w-0"><span className="block truncate">{l.bookingText ?? l.text}</span><span className="text-xs text-muted">{e.reason} · {e.by}, {e.at}</span></span>
+                  <span className="min-w-0"><span className="block truncate">{l.bookingText ?? l.text}</span><span className="text-xs text-muted">{PROOF[proofOf(l, ledger)]}{e && <> · {e.reason} · {e.by}, {e.at}</>}{e?.own && <> · {e.own.no}</>}</span></span>
                   <span className="text-right tabular-nums">{eur(l.amount)}</span>
                 </div>
               ) })}
@@ -384,14 +387,15 @@ function Audit({ ledger, year, picker, onBack }: { ledger: Ledger; year: string;
   const { guarded } = useSession()
   const actor = useActor()
   const x = useExtras()
-  const [part, setPart] = useState<'ausnahmen' | 'aenderungen' | 'freigaben'>('ausnahmen')
+  const [part, setPart] = useState<'ausnahmen' | 'eigenbelege' | 'aenderungen' | 'freigaben'>('ausnahmen')
   const [signing, setSigning] = useState(false)
   const [note, setNote] = useState('')
   const [sure, setSure] = useState(false)
   const lines = ledger.lines.filter((l) => l.date.startsWith(year))
   const name = (id: string) => ledger.lines.find((l) => l.id === id)
-  const missing = lines.filter((l) => l.needsReceipt && ledger.done[l.id] && receiptsOf(l, ledger).length === 0)
-    .map((l) => ({ l, e: ledger.exempt[l.id] })).sort((a, b) => b.l.date.localeCompare(a.l.date))
+  const bare = lines.filter((l) => needsProof(l, ledger) && ledger.done[l.id] && receiptsOf(l, ledger).length === 0).sort((a, b) => b.date.localeCompare(a.date))
+  const missing = bare.filter((l) => ownStateOf(l, ledger) !== 'gedeckt').map((l) => ({ l, e: ledger.exempt[l.id] }))
+  const owned = bare.filter((l) => ownStateOf(l, ledger) === 'gedeckt')
   const changes = Object.entries(ledger.log).flatMap(([id, es]) => { const l = name(id); return l && l.date.startsWith(year) ? es.map((e) => ({ l, e })) : [] }).sort((a, b) => b.e.at.localeCompare(a.e.at))
   const months = monthsOf(year).filter((m) => m <= thisMonth)
   const signed = x.audits.filter((a) => a.year === year)
@@ -399,6 +403,7 @@ function Audit({ ledger, year, picker, onBack }: { ledger: Ledger; year: string;
   const mine = signed.some((a) => a.by === actor)
   const pageA = usePaging(missing, year)
   const pageB = usePaging(changes, year)
+  const pageC = usePaging(owned, year)
   const sign = () => { guarded('billing.periods.audit', () => x.addAudit({ year, by: actor, at: TODAY_ISO, note: note.trim() || undefined })); setSigning(false) }
 
   return (
@@ -424,7 +429,7 @@ function Audit({ ledger, year, picker, onBack }: { ledger: Ledger; year: string;
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sure} onChange={(e) => setSure(e.target.checked)} />Ich habe die Bücher {year} geprüft.</label>
         </ActionPanel>
       )}
-      <Segmented value={part} onChange={setPart} options={[{ value: 'ausnahmen', label: `Ohne Beleg (${missing.length})` }, { value: 'aenderungen', label: `Änderungen (${changes.length})` }, { value: 'freigaben', label: 'Freigaben und Kontenabgleich' }]} />
+      <Segmented value={part} onChange={setPart} options={[{ value: 'ausnahmen', label: `Ohne Beleg (${missing.length})` }, { value: 'eigenbelege', label: `Durch Eigenbeleg gedeckt (${owned.length})` }, { value: 'aenderungen', label: `Änderungen (${changes.length})` }, { value: 'freigaben', label: 'Freigaben und Kontenabgleich' }]} />
       {part === 'ausnahmen' && (
         <Card className="overflow-hidden">
           <div className="divide-y divide-line text-sm">
@@ -433,13 +438,31 @@ function Audit({ ledger, year, picker, onBack }: { ledger: Ledger; year: string;
                 <span className="tabular-nums text-muted">{dmy(l.date)}</span>
                 <span className="truncate">{l.bookingText ?? l.text}</span>
                 <span className="text-muted">{ledger.accountName(l.accountId)}</span>
-                <span>{e ? <>{e.reason} <span className="text-xs text-muted">· {e.by}, {e.at}</span></> : <Badge tone="warn">Beleg fehlt</Badge>}</span>
+                <span>{e && <>{e.reason} <span className="text-xs text-muted">· {e.by}, {e.at}</span> </>}<Badge tone="warn">{e?.own ? `${e.own.no}: ${PROOF.unterschrift}` : PROOF[proofOf(l, ledger)]}</Badge></span>
                 <span className="text-right tabular-nums">{eur(l.amount)}</span>
               </div>
             ))}
             {missing.length === 0 && <p className="p-6 text-center text-muted">Jede Buchung {year} hat eine Rechnung.</p>}
           </div>
           {missing.length > 0 && pageA.bar}
+        </Card>
+      )}
+      {part === 'eigenbelege' && (
+        <Card className="overflow-hidden">
+          {owned.length > 0 && <div className="flex justify-end border-b border-line px-4 py-2"><Button onClick={() => ownCsv(ledger, owned, `eigenbelege-${year}.csv`)}><Download size={16} /> CSV exportieren</Button></div>}
+          <div className="divide-y divide-line text-sm">
+            {pageC.rows.map((l) => { const e = ledger.exempt[l.id]; return (
+              <div key={l.id} className="grid gap-x-3 px-4 py-2 md:grid-cols-[5.5rem_minmax(0,1.5fr)_7rem_minmax(0,1.8fr)_7rem]">
+                <span className="tabular-nums text-muted">{dmy(l.date)}</span>
+                <span className="truncate">{l.bookingText ?? l.text}</span>
+                <span className="font-medium">{e.own?.no}</span>
+                <span>{e.reason} <span className="text-xs text-muted">· 1. Unterschrift {e.own?.first?.by ?? e.by}, {e.own?.first?.at ?? e.at}{e.own?.second && <> · 2. Unterschrift {e.own.second.by}, {e.own.second.at}</>}</span></span>
+                <span className="text-right tabular-nums">{eur(l.amount)}</span>
+              </div>
+            ) })}
+            {owned.length === 0 && <p className="p-6 text-center text-muted">Kein Eigenbeleg {year}.</p>}
+          </div>
+          {owned.length > 0 && pageC.bar}
         </Card>
       )}
       {part === 'aenderungen' && (
@@ -493,15 +516,15 @@ function Export({ ledger, year, onBack }: { ledger: Ledger; year: string; onBack
   const receipts = ledger.receipts.filter((r) => r.lineId && lines.some((l) => l.id === r.lineId))
   const months = opts.filter((m) => m >= from && m <= to)
   const unreleased = months.filter((m) => !ledger.released[m])
-  const exceptions = lines.filter((l) => ledger.exempt[l.id] && receiptsOf(l, ledger).length === 0)
+  const exceptions = lines.filter((l) => needsProof(l, ledger) && ledger.exempt[l.id]?.own && receiptsOf(l, ledger).length === 0)
   const recons = x.recons.filter((r) => months.includes(r.month))
   const base = `Buchungen_${from}_${to}`
   const cc = (l: BankLine) => ledger.codingOfLine(l).map((c) => `${ledger.costCenters.find((x) => x.id === c.costCenterId)?.name} / ${ledger.categories.find((x) => x.id === c.categoryId)?.name}`).join(', ')
   const no = (l: BankLine) => receiptsOf(l, ledger).map((r) => r.number ?? r.name).join(', ')
   const csv = () => download(`${base}${format === 'datev' ? '_DATEV' : ''}.csv`, format === 'datev'
     ? [['Umsatz', 'Soll/Haben', 'Konto', 'Gegenkonto (Kostenstelle)', 'Belegdatum', 'Belegfeld 1', 'Buchungstext'], ...lines.map((l) => [Math.abs(l.amount), l.amount < 0 ? 'H' : 'S', ledger.accountName(l.accountId), cc(l), dmy(l.date), no(l), l.bookingText ?? l.text])]
-    : [['Datum', 'Konto', 'Buchung', 'Betrag', 'Kostenstelle / Kostenart', 'Rechnung', 'Ohne Beleg', 'Status'], ...lines.map((l) => [dmy(l.date), ledger.accountName(l.accountId), l.bookingText ?? l.text, l.amount, cc(l), no(l), ledger.exempt[l.id]?.reason ?? '', ledger.isLocked(l.date) ? 'freigegeben' : 'offen'])])
-  const files = [`${base}${format === 'datev' ? '_DATEV' : ''}.csv`, ...(parts.belege ? [`Belege/ (${receipts.length} PDF)`] : []), ...(parts.ausnahmen ? [`Ohne_Beleg.csv (${exceptions.length})`] : []), ...(parts.abgleich ? [`Kontenabgleich.csv (${recons.length})`] : []), ...(parts.ear ? ['Einnahmen-Ausgaben.pdf'] : [])]
+    : [['Datum', 'Konto', 'Buchung', 'Betrag', 'Kostenstelle / Kostenart', 'Rechnung', 'Eigenbeleg', 'Status'], ...lines.map((l) => [dmy(l.date), ledger.accountName(l.accountId), l.bookingText ?? l.text, l.amount, cc(l), no(l), ledger.exempt[l.id]?.own?.no ?? '', ledger.isLocked(l.date) ? 'freigegeben' : 'offen'])])
+  const files = [`${base}${format === 'datev' ? '_DATEV' : ''}.csv`, ...(parts.belege ? [`Belege/ (${receipts.length} PDF)`] : []), ...(parts.ausnahmen ? [`Eigenbelege.csv (${exceptions.length})`] : []), ...(parts.abgleich ? [`Kontenabgleich.csv (${recons.length})`] : []), ...(parts.ear ? ['Einnahmen-Ausgaben.pdf'] : [])]
 
   return (
     <div className="max-w-3xl space-y-4">
@@ -513,7 +536,7 @@ function Export({ ledger, year, onBack }: { ledger: Ledger; year: string; onBack
           <Segmented value={format} onChange={setFormat} options={[{ value: 'csv', label: 'CSV' }, { value: 'datev', label: 'DATEV-Format' }]} />
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
-          {([['belege', `Rechnungen als PDF (${receipts.length})`], ['ausnahmen', `Liste ohne Beleg (${exceptions.length})`], ['abgleich', 'Kontenabgleich'], ['ear', 'Einnahmen-Ausgaben-Rechnung']] as const).map(([k, label]) => (
+          {([['belege', `Rechnungen als PDF (${receipts.length})`], ['ausnahmen', `Eigenbelege (${exceptions.length})`], ['abgleich', 'Kontenabgleich'], ['ear', 'Einnahmen-Ausgaben-Rechnung']] as const).map(([k, label]) => (
             <label key={k} className="flex items-center gap-2"><input type="checkbox" checked={parts[k]} onChange={(e) => setParts({ ...parts, [k]: e.target.checked })} />{label}</label>
           ))}
         </div>

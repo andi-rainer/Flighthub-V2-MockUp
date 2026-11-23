@@ -88,7 +88,7 @@ export default function Invoices({ ledger }: { ledger: Ledger }) {
             { value: 'alle', label: `Alle (${all.length})` },
             { value: 'eingang', label: `Eingang (${inbox.list.length})` },
             { value: 'ohne', label: `Abbuchung offen (${unpaid.length}${overdue ? ` · ${overdue} überfällig` : ''})` },
-            { value: 'ausnahmen', label: `Ohne Beleg (${exceptions.exempt.length + exceptions.missing.length})` },
+            { value: 'ausnahmen', label: `Ohne Beleg (${exceptions.sign.length + exceptions.later.length + exceptions.missing.length})` },
           ]} />
         ) : <span />}
         <div className="flex flex-wrap gap-2">

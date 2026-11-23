@@ -12,10 +12,14 @@ export interface DayReportLine {
   /** Cash received for this line today (0: none). */ cash: number
   /** Voucher or ticket code. */ code?: string
   /** A guest paid at the manifest: booked one by one in the Kassa. */ ownLine?: boolean
+  /** [Entwurf] Members: balance of the Betriebskonto before the closing. */ before?: number
+  /** [Entwurf] Members: jumps flown and seats paid without jumping. */ jumps?: number; paidSeats?: number
+  /** [Entwurf] The flights of the line ("Flug 2", "Flug 1, 3"). */ flight?: string
 }
 export interface DayReport {
   id: string; /** "TA-2026-11-07" */ number: string; dayId: string; /** ISO */ date: string; aircraft: string; flights: number; jumps: number
   by: string; /** ISO */ at: string
+  /** [Entwurf] Time of the closing ("17:42") and the Kassa before it. */ time?: string; cashBefore?: number
   lines: DayReportLine[]
   /** The Kassa booking of the takings (none when no cash came in) and the receipt that carries this report. */
   cashLineId?: string; receiptId?: string
@@ -35,6 +39,38 @@ export function reportTotals(r: Pick<DayReport, 'lines'>) {
 }
 /** The Kassa booking of the day: cash of members plus cash of guests without a record. */
 export const dayCash = (r: Pick<DayReport, 'lines'>) => { const t = reportTotals(r); return Math.round((t.memberCash + t.guestCash) * 100) / 100 }
+
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+/** [Entwurf] Plain words for how a line was paid, as the manifest person and the Beleg say it. */
+export const HOW_WORDS: Record<DayHow, string> = { konto: 'vom Konto', bar: 'bar', gast: 'bar', voucher: 'Voucher', online: 'online bezahlt', ticket: 'Ticket bezahlt', offen: 'Überweisung offen' }
+
+/** "3 Sprünge", "1 Sprung, 1 Platz ohne Sprung" (seat paid by a no-show). */
+export const jumpsLabel = (jumps = 1, paidSeats = 0) =>
+  [jumps > 0 ? `${jumps} ${jumps === 1 ? 'Sprung' : 'Sprünge'}` : '', paidSeats > 0 ? `${paidSeats} ${paidSeats === 1 ? 'Platz' : 'Plätze'} ohne Sprung` : ''].filter(Boolean).join(', ')
+
+export interface MemberRow { line: DayReportLine; before?: number; after?: number }
+/**
+ * [Entwurf] Everything the closing overview and the Tagesabschluss-Beleg show, read from the lines: cash split by members and guests,
+ * the Kassa before and after, every member with the balance before and after, every guest, redeemed vouchers and who is in minus.
+ */
+export function daySummary(r: Pick<DayReport, 'lines' | 'cashBefore'>) {
+  const members: MemberRow[] = r.lines.filter((l) => !!l.memberId).map((line) => ({ line, before: line.before, after: line.before === undefined ? undefined : round2(line.before - line.price + line.cash) }))
+  const guests = r.lines.filter((l) => !l.memberId)
+  const memberCash = round2(members.reduce((n, m) => n + m.line.cash, 0))
+  const guestCash = round2(guests.reduce((n, l) => n + l.cash, 0))
+  const cash = round2(memberCash + guestCash)
+  return {
+    members, guests, memberCash, guestCash, cash,
+    memberTotal: round2(members.reduce((n, m) => n + m.line.price, 0)),
+    guestTotal: round2(guests.reduce((n, l) => n + l.price, 0)),
+    openTotal: round2(guests.filter((l) => l.how === 'offen').reduce((n, l) => n + l.price, 0)),
+    vouchers: guests.filter((l) => l.how === 'voucher'),
+    cashAfter: r.cashBefore === undefined ? undefined : round2(r.cashBefore + cash),
+    /** In minus because of this day (zero or more before). */ newMinus: members.filter((m) => m.before !== undefined && m.after !== undefined && m.before >= 0 && m.after < 0),
+    /** Already in minus before the day. */ oldMinus: members.filter((m) => m.before !== undefined && m.before < 0),
+  }
+}
 
 // ---------- Cash count ----------
 /** Euro notes and coins, largest first. The key is the value in cents. */

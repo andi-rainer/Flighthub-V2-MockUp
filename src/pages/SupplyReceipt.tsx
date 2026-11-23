@@ -25,9 +25,14 @@ export function useSupplyForm(fuel: boolean, fixed?: number, startOn = false) {
   const setLater = (b: boolean) => { setLaterState(b); if (b) setNoReceiptState(false) }
   const [reason, setReason] = useState('')
   const [other, setOther] = useState('')
+  // [Entwurf] Without a receipt: fuel from the club's own stock needs nothing; bought fuel gets a reason and, if wanted, an Eigenbeleg (amount).
+  const [source, setSource] = useState<'' | 'verein' | 'gekauft'>('')
+  const [own, setOwn] = useState(false)
+  const [ownAmount, setOwnAmount] = useState('')
   const [paid, setPaid] = useState<'' | 'lieferschein' | 'privat'>('')
   const [payer, setPayer] = useState('')
-  const reasonText = reason === 'Sonstiges' ? other.trim() : reason
+  const bought = reason === 'Sonstiges' ? other.trim() : reason
+  const reasonText = source === 'verein' ? CLUB_FUEL : source === 'gekauft' && bought ? (own && num(ownAmount) > 0 ? `${bought} · Eigenbeleg ${num(ownAmount).toFixed(2).replace('.', ',')} €` : bought) : ''
   // Oil is only tracked: it needs no invoice or delivery note.
   const state: Rcpt = !fuel ? { state: 'entfaellt' } : cap.file ? { state: 'ja' } : noReceipt && reasonText ? { state: 'grund', reason: reasonText } : { state: 'fehlt' }
   const mismatch = fuel && !!cap.file && amount > 0 && num(cap.liters) > 0 && Math.abs(num(cap.liters) - amount) > 0.5
@@ -37,13 +42,15 @@ export function useSupplyForm(fuel: boolean, fixed?: number, startOn = false) {
     : amount <= 0 ? (fuel ? 'Bei „Getankt“ bitte die Liter angeben.' : 'Bei „Öl“ bitte die Menge angeben.')
     : !fuel ? null
     : !cap.file && !later && !noReceipt ? 'Beleg anhängen oder „Beleg kommt später“ wählen.'
+    : noReceipt && !source ? 'Treibstoff: Woher kommt der Treibstoff?'
     : noReceipt && !reasonText ? 'Treibstoff: Grund für den fehlenden Beleg angeben.'
+    : noReceipt && own && !(num(ownAmount) > 0) ? 'Eigenbeleg: Betrag angeben.'
     : cap.file ? (captureProblem(cap, fuel) ?? (mismatch ? 'Liter im Beleg und im Eintrag weichen ab.' : !paid ? 'Bitte angeben: Lieferschein oder privat vorgestreckt.' : paid === 'privat' && !payerId ? 'Bitte das Mitglied wählen, das bezahlt hat.' : null))
     : null
   return {
     fuel, on, setOn, amount, setAmount, cap, state, problem, fixed: fixed !== undefined,
     missing: fuel && on && amount > 0 && state.state === 'fehlt',
-    fields: { fuel, amount, setAmount, cap, setCap: (c: Captured) => { setCap(c); if (fuel && amount === 0 && num(c.liters) > 0) setAmount(num(c.liters)) }, noReceipt, setNoReceipt, later, setLater, reason, setReason, other, setOther, paid, setPaid, payer: payerId, setPayer, lockAmount: fixed !== undefined, mismatch },
+    fields: { fuel, amount, setAmount, cap, setCap: (c: Captured) => { setCap(c); if (fuel && amount === 0 && num(c.liters) > 0) setAmount(num(c.liters)) }, noReceipt, setNoReceipt, later, setLater, reason, setReason, other, setOther, source, setSource, own, setOwn, ownAmount, setOwnAmount, paid, setPaid, payer: payerId, setPayer, lockAmount: fixed !== undefined, mismatch },
     /** Keeps the receipt in Finanzen (an Auslage when a member paid it) and returns what the entry stores. */
     commit: (ledger: Ledger, reg: string): Supply | undefined => {
       if (!on || amount <= 0) return undefined
@@ -57,6 +64,8 @@ export function useSupplyForm(fuel: boolean, fixed?: number, startOn = false) {
     },
   }
 }
+/** [Entwurf] Fuel taken from the club's own stock: nothing was paid, so there is nothing to document. */
+export const CLUB_FUEL = 'Vereinseigener Treibstoff'
 export type SupplyForm = ReturnType<typeof useSupplyForm>
 
 const box = 'h-12 w-full rounded-xl border border-line bg-surface px-3 text-base outline-none focus:border-brand disabled:bg-slate-50'
@@ -77,10 +86,14 @@ export function SupplyFields({ f, hideAmount, onLiters }: { f: SupplyForm['field
         <div className="mb-1 text-sm font-medium">Rechnung oder Lieferschein</div>
         {f.noReceipt ? (
           <div className="space-y-3 rounded-xl border border-line p-3">
-            <div className="text-sm font-medium">Warum gibt es keinen Beleg?</div>
-            <div className="flex flex-wrap gap-2">{NO_RECEIPT_REASONS.filter((r) => r !== 'Beleg kommt später').map((r) => <button key={r} onClick={() => f.setReason(r)} className={clsx('rounded-lg border px-3 py-2 text-sm', f.reason === r ? 'border-brand bg-brand-soft text-brand' : 'border-line hover:bg-slate-50')}>{r}</button>)}</div>
-            {f.reason === 'Sonstiges' && <input value={f.other} onChange={(e) => f.setOther(e.target.value)} placeholder="Grund kurz beschreiben" className="h-11 w-full rounded-lg border border-line px-3 text-sm outline-none focus:border-brand" />}
-            <button onClick={() => { f.setNoReceipt(false); f.setReason(''); f.setOther('') }} className="text-sm text-brand">Doch einen Beleg anhängen</button>
+            <Segmented value={f.source} onChange={(v) => { f.setSource(v); f.setReason(''); f.setOwn(false) }} options={[{ value: 'verein', label: 'Vereinseigener Treibstoff' }, { value: 'gekauft', label: 'Gekauft, Beleg fehlt' }]} />
+            {f.source === 'gekauft' && (<>
+              <div className="flex flex-wrap gap-2">{NO_RECEIPT_REASONS.filter((r) => r !== 'Beleg kommt später' && r !== 'Vereinstankstelle, kein Beleg').map((r) => <button key={r} onClick={() => f.setReason(r)} className={clsx('min-h-11 rounded-lg border px-3 py-2 text-sm', f.reason === r ? 'border-brand bg-brand-soft text-brand' : 'border-line hover:bg-slate-50')}>{r}</button>)}</div>
+              {f.reason === 'Sonstiges' && <input value={f.other} onChange={(e) => f.setOther(e.target.value)} placeholder="Grund kurz beschreiben" className="h-11 w-full rounded-lg border border-line px-3 text-sm outline-none focus:border-brand" />}
+              <label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={f.own} onChange={(e) => f.setOwn(e.target.checked)} className="h-5 w-5" /> Eigenbeleg ausfüllen</label>
+              {f.own && <input inputMode="decimal" aria-label="Betrag Eigenbeleg" value={f.ownAmount} onChange={(e) => f.setOwnAmount(e.target.value)} placeholder="Bezahlter Betrag €" className="h-11 w-full rounded-lg border border-line px-3 text-sm outline-none focus:border-brand sm:w-48" />}
+            </>)}
+            <button onClick={() => { f.setNoReceipt(false); f.setReason(''); f.setOther(''); f.setSource(''); f.setOwn(false) }} className="text-sm text-brand">Doch einen Beleg anhängen</button>
           </div>
         ) : f.later ? (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm"><span>Beleg kommt später. Nachreichen über „Beleg fehlt“ im Bordbuch.</span><button onClick={() => f.setLater(false)} className="text-brand">Doch jetzt anhängen</button></div>

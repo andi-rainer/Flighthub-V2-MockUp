@@ -17,10 +17,13 @@ import { CashCountDialog } from './finance/CashCount'
 import { COUNT_INTERVAL_DAYS, daysBetween } from './finance/cashDocs'
 import { monthOf } from './finance/ledger'
 import { monthLabel } from './finance/parts'
-import { lineStatus, proofOf } from './finance/status'
+import { isTodo, lineStatus, proofOf } from './finance/status'
 import { dmy } from './manifest/data'
 import { initialFees } from './members/data'
 import { MANIFEST_TODAY, TODAY_DAY } from './manifest/data'
+import { useDayCheck } from './manifest/dayCheck'
+import MinusNotice from './manifest/MinusNotice'
+import { useActor } from './tickets/parts'
 
 export default function Dashboard() {
   const { can, modules } = useApp()
@@ -59,13 +62,14 @@ function Treasurer() {
   const differs = status.filter((x) => x === 'abweichung').length
   const openExpenses = ledger.expenses.filter((x) => x.status === 'offen').length
   const exceptions = ledger.lines.filter((l) => proofOf(l, ledger) === 'ausnahme').length
+  const unsigned = status.filter((x) => x === 'unterschrift').length
   const unpaid = ledger.receipts.filter((r) => !r.lineId && !ledger.expenseOf(r.id))
   const overdue = unpaid.filter((r) => r.due && r.due < TODAY_ISO).length
   const minus = withAccount.filter((m) => (ledger.balances[m.id] ?? 0) < 0)
   // Past months that are not released yet; the oldest one is the one to do.
   const thisMonth = monthOf(TODAY_ISO)
   const toRelease = [...new Set(ledger.lines.map((l) => monthOf(l.date)))].filter((m) => m < thisMonth && !ledger.released[m]).sort()
-  const releaseTodo = toRelease.length > 0 ? ledger.lines.filter((l) => monthOf(l.date) === toRelease[0] && ['offen', 'beleg', 'abweichung'].includes(lineStatus(l, ledger))).length : 0
+  const releaseTodo = toRelease.length > 0 ? ledger.lines.filter((l) => monthOf(l.date) === toRelease[0] && isTodo(lineStatus(l, ledger))).length : 0
   const statementsOpen = Object.values(ledger.statements).filter((x) => x.state !== 'versendet').length
   // Cash boxes are counted from time to time: the Kassa and every other cash account.
   const cashDue = ledger.accounts.filter((a) => a.kind === 'bar' && !a.archived).map((a) => ({ a, last: ledger.counts.find((c) => c.accountId === a.id) })).filter(({ last }) => !last || daysBetween(last.date, TODAY_ISO) >= COUNT_INTERVAL_DAYS)
@@ -78,17 +82,22 @@ function Treasurer() {
   const dues = aircraft.flatMap((a) => dueList(aircraftData[a.id], TODAY_ISO).map((d) => ({ ...d, reg: a.reg }))).sort((a, b) => a.days - b.days).slice(0, 4)
   const expiring = members.reduce((n, m) => n + docsOf(m.id).filter((d) => d.state !== 'ok').length, 0)
   const max = Math.max(1, ...rows.map((r) => Math.abs(r.result)))
+  // [Entwurf] Closed Sprungtage waiting for the check; a day closed by this person is checked by someone else.
+  const dayCheck = useDayCheck()
+  const actor = useActor()
+  const toCheck = can('manifest.close.confirm') ? dayCheck.open(ledger.dayReports).filter((r) => r.by !== actor) : null
 
   return (
     <>
       <PageHeader title={`Guten Morgen, ${members.find((m) => m.id === persona.memberId)!.name.split(' ')[0]}`} />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {[
+          ...(toCheck ? [<Task key="t" to={toCheck[0] ? `/manifest/${toCheck[0].dayId}?pruefen=1` : '/manifest?tab=tage'} n={toCheck.length} label={toCheck.length === 1 ? '1 Tagesabschluss prüfen' : `${toCheck.length} Tagesabschlüsse prüfen`} hint={toCheck.map((r) => `${dmy(r.date).slice(0, 6)} von ${r.by}`).join(', ')} done="Alle Sprungtage festgeschrieben" />] : []),
           <Task key="b" to="/finanzen?tab=bank&offen=1" n={openLines} label="Buchungen zuordnen" hint="Vorschläge und offene Zeilen in allen Konten" />,
           <Task key="a" to="/finanzen?tab=bank&offen=1" n={openExpenses} label="Auslagen prüfen" hint="Bar-Auslagen von Mitgliedern warten auf deine Prüfung" />,
           <Task key="e" to="/finanzen?tab=bank&offen=1" n={noReceipt + differs} label="Belege fehlen" hint={`${noReceipt} ohne Rechnung${differs > 0 ? `, ${differs} weichen im Betrag ab` : ''}`} />,
           <Task key="r" to="/finanzen?tab=rechnungen&status=ohne" n={unpaid.length} label="Rechnungen ohne Abbuchung" hint={`${eur(unpaid.reduce((n, r) => n + r.amount, 0))} warten auf die Bank${overdue > 0 ? `, ${overdue} überfällig` : ''}`} />,
-          <Task key="x" to="/finanzen?tab=rechnungen&status=ausnahmen" n={exceptions} label="Ausnahmen ohne Beleg" hint="gebucht mit Grund, für den Rechnungsprüfer" done="Keine Ausnahmen" />,
+          <Task key="x" to="/finanzen?tab=rechnungen&status=ausnahmen" n={exceptions + unsigned} label="Eigenbelege und Nachreichungen" hint={[unsigned > 0 && `${unsigned} gegenzeichnen`, exceptions > 0 && `${exceptions} Beleg kommt später`].filter(Boolean).join(' · ')} done="Nichts offen" />,
           <Task key="m" to="/finanzen?tab=konten&filter=minus" n={minus.length} label="Mitglieder im Minus" hint={`${eur(minus.reduce((n, m) => n + (ledger.balances[m.id] ?? 0), 0))} offen auf ${minus.length} Betriebskonten`} />,
           <Task key="z" onClick={() => setCounting(cashDue[0]?.a.id ?? CASH_ID)} n={cashDue.length} label="Kassa zählen" hint={`${cashDue.map(({ a }) => a.name).join(', ')}: ${cashDue[0]?.last ? `zuletzt am ${dmy(cashDue[0].last.date)} gezählt` : 'noch nie gezählt'}`} done={lastKassa ? `zuletzt am ${dmy(lastKassa.date)} gezählt` : undefined} />,
           <Task key="p" to={toRelease[0] ? `/finanzen?tab=zeitraeume&ansicht=monat&monat=${toRelease[0]}` : '/finanzen?tab=zeitraeume'} n={toRelease.length} label="Monat freigeben" hint={`${monthLabel(toRelease[0] ?? thisMonth)}: ${releaseTodo > 0 ? `${releaseTodo} Buchungen noch zu bearbeiten` : 'alles zugeordnet, bereit zur Freigabe'}`} />,
@@ -209,6 +218,7 @@ function MemberHome() {
   return (
     <>
       <PageHeader title={`Hallo ${m.name.split(' ')[0]}`} subtitle={modules.skydive ? 'Heute am Platz?' : undefined} />
+      <MinusNotice memberId={m.id} className="mb-5" />
       <FuelMissingNotice className="mb-5" />
       <div className="grid gap-5 lg:grid-cols-2">
         <div className="lg:col-span-2"><ExpenseSubmitCard /></div>
@@ -265,6 +275,7 @@ function PilotHome() {
   return (
     <>
       <PageHeader title={`Hallo ${m.name.split(' ')[0]}`} actions={modules.charter ? <Link to="/reservierungen"><Button>Flugzeug reservieren</Button></Link> : undefined} />
+      <MinusNotice memberId={m.id} className="mb-5" />
       {next && (
         <Card className="mb-5 flex flex-wrap items-center gap-4 border-brand/40 bg-brand-soft/50 p-5">
           <div className="min-w-0 flex-1 basis-56">

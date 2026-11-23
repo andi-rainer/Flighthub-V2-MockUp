@@ -175,7 +175,17 @@ Alles hier ist `[Beschlossen]`, sofern nicht anders markiert. Symbole: ✔ im Kl
 - Mein Konto zeigt Mitgliedern nur den eigenen Kontostand; alle sieht nur, wer die Berechtigung hat (z. B. Kassier). ✔
 - Bar-Einzahlung mit wählbarem Datum (Buchung kann Tage später erfolgen). ✔
 - In der Mitgliederakte ist „Bar einzahlen“ dezent; eine Überweisung wird dort nur bei einer Vermutung (z. B. gleicher Name) zugewiesen; dazu ein Link zu Finanzen. ✔
+- **Umbuchungen zwischen eigenen Konten brauchen keinen Beleg** (Bankomat in die Kassa, Einzahlung aufs Sparbuch, Umbuchung zwischen Konten). Sie zählen nie als „ohne Beleg“. ○
+- **Jede Einnahme braucht eine Rechnung.** Für die Betriebskonten der Mitglieder wird sie **monatlich je Konto erzeugt** (Monatsrechnung: alles, was im Monat belastet wurde, dazu Zahlungen und Stand). Die Buchungen der Belastung verlinken auf sie. ○
+- **Ein Eigenbeleg deckt eine Buchung ohne Lieferantenrechnung, die Ausnahme endet damit.** Die Buchung gilt als „gedeckt durch Eigenbeleg“ und bleibt für den Rechnungsprüfer als eigene Gruppe sichtbar. **Jeder Eigenbeleg braucht zwei Unterschriften:** die erste von der Person, die ihn einreicht (bei einer Auslage das Mitglied), die zweite von Kassier oder Obmann, nie dieselbe Person. ○
+- **Keine Monatsfreigabe ohne Beleg:** Jede Buchung, die einen Beleg braucht, hat vor der Freigabe eine Rechnung oder einen unterschriebenen Eigenbeleg. „Kein Beleg“ allein genügt nicht. ○
+- **Monatsrechnung zum Monatsende** als Standard; ein Mitglied kann jederzeit eine Rechnung bis heute anfordern. ○
+- **Ein Mitglied darf mehr einzahlen, als es im Minus ist** (Vorauszahlung für mehr Sprünge, Flüge oder eine größere Reise). Das ist der Normalfall, keine Ausnahme. Eine Einzahlung ist keine Einnahme: Sie ist ein Guthaben des Mitglieds (Verbindlichkeit des Vereins); Einnahme wird erst die Belastung. ○ Aufteilung in „Ausgleich Minus“ und „Guthaben“, Obergrenze und Auszahlung sind `[Entwurf]` ([03](03-klickdummy.md)).
 - SEPA-Lastschrift: denkbar, nicht entschieden ([04](04-offen-und-ideen.md)).
+
+- **Tagesabschluss:** Jeder mit Manifest-Rechten für den Tag kann den Tag abschließen. Danach **prüft Kassier oder Obmann** (Pflicht) und **korrigiert selbst**, was falsch ist; es gibt keinen Weg zurück an das Manifest. Danach ist der Tag **festgeschrieben**, die Buchungen stehen fest. Mitglieder, deren Konto durch den Tag ins Minus fällt, bekommen eine Nachricht. ○
+- **Treibstoff ohne Beleg:** Vereinseigener Treibstoff braucht keinen Beleg und keinen Eigenbeleg; bei gekauftem Treibstoff ohne Beleg ist ein Eigenbeleg möglich. ○
+- **Tandem-Gast ohne Ticket:** Am Platz wird ein Ticket angelegt und bar bezahlt; die Logik bleibt „Ticket kaufen, dann springen“. ○
 
 ## 8. Rechte, Anmeldung, Geräte
 

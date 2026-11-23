@@ -1,13 +1,14 @@
 import { Download, FileCheck2, Link2 } from 'lucide-react'
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { eur, type BankLine } from '../../data'
 import { Button } from '../../ui'
 import { dmy } from '../manifest/data'
 import { type Ledger } from './ledger'
 import { DayReportDrawer } from './DayReport'
 import { openReceiptFile } from './parts'
-import { NoReceiptForm, OwnReceiptDoc, ReceiptForm, ReceiptPicker } from './ReceiptDialogs'
-import { receiptsOf, receiptSum } from './status'
+import { NoReceiptForm, OwnReceiptDoc, ReceiptForm, ReceiptPicker, SecondSignForm, useCountersign } from './ReceiptDialogs'
+import { isInternal, LATER, needsProof, ownStateOf, receiptsOf, receiptSum } from './status'
 
 /**
  * The invoices of one booking: attach (an invoice that waits for its debit, or a new one), detach, or note that there is none. Works on
@@ -18,7 +19,7 @@ export default function LineReceipts({ line, ledger, locked = false, booked, onI
   /** The booking is booked: only then can an invoice be missing. */ booked: boolean
   onInvoice?: (id: string) => void; onDialog: (open: boolean) => void
 }) {
-  const [sub, setSub] = useState<null | 'pick' | 'create' | 'none' | 'own'>(null)
+  const [sub, setSub] = useState<null | 'pick' | 'create' | 'none' | 'own' | 'sign'>(null)
   const [doc, setDoc] = useState(false)
   const [report, setReport] = useState<string | null>(null)
   const reportOf = (id: string | null) => (id ? ledger.dayReports.find((d) => d.receiptId === id) : undefined)
@@ -28,7 +29,9 @@ export default function LineReceipts({ line, ledger, locked = false, booked, onI
   const want = Math.round(Math.abs(line.amount) * 100)
   const rest = want - receiptSum(rs)
   const fits = !locked && rest > 0 ? ledger.receipts.filter((r) => !r.lineId && !ledger.expenseOf(r.id) && Math.round(r.amount * 100) === rest).slice(0, 2) : []
-  const missing = booked && line.needsReceipt && rs.length === 0
+  const missing = booked && needsProof(line, ledger) && rs.length === 0
+  const own = ownStateOf(line, ledger)
+  const mayCountersign = useCountersign()(ex)
 
   return (
     <div>
@@ -54,16 +57,17 @@ export default function LineReceipts({ line, ledger, locked = false, booked, onI
           </div>
         ))}
         {missing && ex && (
-          <div className="rounded-lg bg-warn-soft px-3 py-2 text-amber-900">
-            <div className="flex flex-wrap items-center gap-2"><span className="min-w-0 flex-1">Ohne Beleg: {ex.reason} <span className="text-xs">({ex.by} am {ex.at})</span></span>
+          <div className={own === 'gedeckt' ? 'rounded-lg bg-ok-soft px-3 py-2 text-ok' : 'rounded-lg bg-warn-soft px-3 py-2 text-amber-900'}>
+            <div className="flex flex-wrap items-center gap-2"><span className="min-w-0 flex-1">{own === 'gedeckt' ? 'Durch Eigenbeleg gedeckt' : own === 'unterschrift' ? 'Zweite Unterschrift fehlt' : ex.reason === LATER ? 'Beleg kommt später' : 'Beleg fehlt'}{ex.reason !== LATER && `: ${ex.reason}`} <span className="text-xs">({ex.own?.first?.by ?? ex.by} am {ex.own?.first?.at ?? ex.at}{ex.own?.second ? `, ${ex.own.second.by} am ${ex.own.second.at}` : ''})</span></span>
+              {own === 'unterschrift' && !locked && mayCountersign && <button onClick={() => show('sign')} className="text-xs font-medium text-brand">Gegenzeichnen</button>}
               {ex.own ? <button onClick={() => setDoc(!doc)} className="text-xs font-medium text-brand">{doc ? 'Eigenbeleg ausblenden' : `Eigenbeleg ${ex.own.no}`}</button>
                 : !locked && <button onClick={() => show('own')} className="text-xs font-medium text-brand">Eigenbeleg erstellen</button>}
             </div>
-            {doc && ex.own && <div className="mt-2"><OwnReceiptDoc own={ex.own} reason={ex.reason} by={ex.by} /></div>}
+            {doc && ex.own && <div className="mt-2"><OwnReceiptDoc own={ex.own} reason={ex.reason} by={ex.by} at={ex.at} /></div>}
           </div>
         )}
         {missing && !ex && <div className="rounded-lg bg-warn-soft px-3 py-2 text-warn">Beleg fehlt</div>}
-        {rs.length === 0 && !missing && fits.length === 0 && <div className="rounded-lg border border-dashed border-line px-3 py-2 text-muted">Keine Rechnung</div>}
+        {rs.length === 0 && !missing && fits.length === 0 && <div className="rounded-lg border border-dashed border-line px-3 py-2 text-muted">{isInternal(line, ledger) ? 'Kein Beleg nötig' : 'Keine Rechnung'}</div>}
       </div>
       {!locked && (
         <div className="mt-2 flex flex-wrap gap-2">
@@ -72,11 +76,14 @@ export default function LineReceipts({ line, ledger, locked = false, booked, onI
           {missing && !ex && <Button onClick={() => show('none')}>Kein Beleg</Button>}
         </div>
       )}
+      {createPortal(<>
       <ReceiptPicker line={sub === 'pick' ? line : null} ledger={ledger} onClose={() => show(null)} onCreate={() => show('create')} />
       {sub === 'create' && <ReceiptForm line={line} ledger={ledger} onClose={() => show(null)} />}
       {sub === 'none' && <NoReceiptForm line={line} ledger={ledger} onClose={() => show(null)} />}
       {reportOf(report) && <DayReportDrawer report={reportOf(report)!} onClose={() => setReport(null)} />}
       {sub === 'own' && <NoReceiptForm line={line} ledger={ledger} ownOnly onClose={() => show(null)} />}
+      {sub === 'sign' && <SecondSignForm line={line} ledger={ledger} onClose={() => show(null)} />}
+      </>, document.body)}
     </div>
   )
 }

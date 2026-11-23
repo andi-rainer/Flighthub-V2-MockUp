@@ -148,11 +148,15 @@ export const PERMISSION_CATALOG = [
   capability('billing.periods.audit', 'billing', [F.AUDITOR]),
   def('members.applications.decide', 'members', { sensitive: true }),
   def('members.fees.manage', 'members', { sensitive: true }),
+  // [Entwurf] Checks a closed Sprungtag and locks it (festschreiben). Only the treasurer and the chairman, not every admin function.
+  { code: 'manifest.close.confirm', category: 'manifest', sensitive: true, grantedToAll: false as boolean, defaultFunctions: [F.TREASURER, F.CHAIRMAN] },
+  // [Entwurf] Second signature of an Eigenbeleg (never by the person who signed first). Treasurer and chairman.
+  { code: 'billing.receipts.countersign', category: 'billing', sensitive: true, grantedToAll: false as boolean, defaultFunctions: [F.TREASURER, F.CHAIRMAN] },
 ] as const satisfies readonly PermissionDefinition[]
 
 export type Permission = (typeof PERMISSION_CATALOG)[number]['code']
 
-export const NEW_IN_V2: ReadonlySet<string> = new Set(['afp.view', 'afp.create', 'manifest.checkin.self', 'manifest.checkin.others', 'manifest.flights.pilot', 'manifest.jumps.sport', 'manifest.tandem.master', 'billing.bank.manage', 'billing.statements.approve', 'billing.periods.release', 'billing.periods.audit', 'members.applications.decide', 'members.fees.manage'])
+export const NEW_IN_V2: ReadonlySet<string> = new Set(['afp.view', 'afp.create', 'manifest.checkin.self', 'manifest.checkin.others', 'manifest.flights.pilot', 'manifest.jumps.sport', 'manifest.tandem.master', 'billing.bank.manage', 'billing.statements.approve', 'billing.periods.release', 'billing.periods.audit', 'members.applications.decide', 'members.fees.manage', 'manifest.close.confirm', 'billing.receipts.countersign'])
 
 /** Permissions that only work together with another one (the editor enables them together). */
 export const PERMISSION_REQUIREMENTS: Partial<Record<Permission, readonly Permission[]>> = {
@@ -183,6 +187,7 @@ export const PERMISSION_REQUIREMENTS: Partial<Record<Permission, readonly Permis
   'billing.statements.approve': ['billing.view.all'],
   'billing.periods.release': ['billing.view.all'],
   'billing.periods.audit': ['billing.view.all'],
+  'billing.receipts.countersign': ['billing.view.all'],
   'members.applications.decide': ['members.view.all'],
   'members.fees.manage': ['members.view.all'],
 }
@@ -326,7 +331,9 @@ export const PERMISSION_LABELS: Record<string, string> = {
  "billing_statements_approve": "Kontoauszüge freigeben",
  "billing_periods_release": "Buchungszeiträume freigeben und sperren",
  "billing_periods_audit": "Jahr als Rechnungsprüfer prüfen",
+ "billing_receipts_countersign": "Eigenbelege gegenzeichnen (zweite Unterschrift)",
  "members_applications_decide": "Anträge genehmigen oder ablehnen",
- "members_fees_manage": "Mitgliedsbeiträge und Rechnungen verwalten"
+ "members_fees_manage": "Mitgliedsbeiträge und Rechnungen verwalten",
+ "manifest_close_confirm": "Tagesabschlüsse prüfen und festschreiben"
 }
 export const labelOf = (code: string) => PERMISSION_LABELS[code.replaceAll('.', '_')] ?? code

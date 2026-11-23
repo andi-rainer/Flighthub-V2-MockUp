@@ -24,7 +24,17 @@ export interface NewReceipt {
   /** Paid in cash from this money account (Kassa): the line is created with the receipt, booked at once when `splits` are given. */ cashAccountId?: string
 }
 /** Eigenbeleg: a document the club writes itself for a booking without a receipt (who got the money, what for). The exception stays. */
-export interface OwnReceipt { no: string; payee: string; purpose: string; /** ISO */ date: string; amount: number; file: string }
+export interface OwnReceipt {
+  no: string; payee: string; purpose: string; /** ISO */ date: string; amount: number; file: string
+  /** [Entwurf] Above the limit of the club (`ownLimit`, fixed when created) a second person signs; until then it does not cover the booking. */ needsSecond?: boolean
+  second?: OwnSignature
+  /** [Entwurf] First signature: the person who hands it in (the member for an Auslage, otherwise who created it). Missing on older ones: `NoReceipt.by`. */
+  first?: OwnSignature
+}
+/** [Entwurf] A signature on an Eigenbeleg: in-app confirmation with name, day and time. */
+export interface OwnSignature { by: string; /** "dd.MM." */ at: string; /** "14:32" */ time?: string }
+/** [Entwurf] An Auslage without receipt: the member signs the Eigenbeleg when handing it in; it becomes the Eigenbeleg of the booking. */
+export interface ExpenseOwn { reason: string; doc: OwnReceipt }
 export interface NoReceipt { reason: string; by: string; /** "dd.MM." */ at: string; own?: OwnReceipt }
 /** Where a booking of a Betriebskonto comes from: the account links to it, and the source links back. `lineId` is the booking on a money account (bank, Kassa). */
 export interface EntrySource { kind: 'flug' | 'sprungtag' | 'bank' | 'kassa' | 'auslage' | 'beitrag'; lineId?: string }
@@ -54,11 +64,13 @@ export interface ExpenseRequest {
   /** Who submitted it, when the treasurer credited someone else (a wrong person was chosen). */
   changedFrom?: string
   origin: 'Mitglied' | 'Bordbuch'
+  /** [Entwurf] No receipt: the Eigenbeleg the member signed (then `receiptId` is empty). */
+  own?: ExpenseOwn
   /** What the member said it was for (fuel of an aircraft): the treasurer starts from it. */
   suggested?: { costCenterId: string; categoryId: string }
 }
 /** What the treasurer books of an expense: who gets the credit, the receipt as read, the cost coding and the booking text (empty: supplier and number). */
-export interface ExpenseBooking { memberId: string; receipt: NewReceipt; splits: Split[]; text?: string }
+export interface ExpenseBooking { memberId: string; receipt: NewReceipt; splits: Split[]; text?: string; /** [Entwurf] The person who credits it also countersigns the Eigenbeleg. */ countersign?: boolean }
 export type { Released }
 
 /** The cost center coding of an amount: a booking on cost centers codes it by percent, other targets code nothing. */
@@ -117,7 +129,7 @@ export interface Ledger {
    * Closes a Sprungtag: charges the Betriebskonten, credits the cash received, books the cash of the day as ONE Kassa line split on the members
    * and links the report to it as its receipt. Guests who paid by ticket are booked one by one before (`bookCash`).
    */
-  closeDay: (c: { dayId: string; date: string; aircraft: string; flights: number; jumps: number; lines: DayReportLine[]; by: string }) => DayReport
+  closeDay: (c: { dayId: string; date: string; aircraft: string; flights: number; jumps: number; lines: DayReportLine[]; by: string; /** [Entwurf] "17:42" */ time?: string; /** [Entwurf] Kassa before the closing. */ cashBefore?: number }) => DayReport
   /** [Entwurf] Cash counts (Zählprotokolle), newest first. */
   counts: CashCount[]
   /** Counts a cash account: Soll is the balance in the books, Ist the pieces; a difference becomes a marked booking (exception with reason, person, day). */
@@ -128,6 +140,8 @@ export interface Ledger {
   reopen: (month: string, by: string) => void
   /** `date` is the day the money came in (ISO), it may be days before the booking. Default: today. */
   cashDeposit: (memberId: string, amount: number, text?: string, date?: string) => void
+  /** [Entwurf] Credit paid back to a member (Guthaben auszahlen): an outgoing line on the bank or the Kassa, booked on the Betriebskonto. Returns the id of the line. */
+  payout: (p: { memberId: string; amount: number; accountId: string; text: string; date?: string }) => string
   accountRules: AccountRules
   setAccountRules: (r: AccountRules) => void
   reminders: Record<string, Reminder>
@@ -152,12 +166,17 @@ export interface Ledger {
   /** The exception with an Eigenbeleg as its document. */
   markOwnReceipt: (lineId: string, reason: string, by: string, own: OwnReceipt) => void
   clearNoReceipt: (lineId: string) => void
+  /** [Entwurf] From this amount (€) an Eigenbeleg needs a second signature. Set by the treasurer. */
+  ownLimit: number
+  setOwnLimit: (n: number) => void
+  /** [Entwurf] The second person signs the Eigenbeleg of this booking. */
+  signOwnReceipt: (lineId: string, by: string, time?: string) => void
   /** Returns the id of the new receipt. */
   createReceipt: (r: NewReceipt) => string
   expenses: ExpenseRequest[]
   expenseOf: (receiptId: string) => ExpenseRequest | undefined
   /** A member hands in a cash expense: the receipt is kept, nothing is booked yet. Returns the id of the receipt. */
-  submitExpense: (e: { memberId: string; receipt: NewReceipt; description: string; suggested?: ExpenseRequest['suggested']; origin: ExpenseRequest['origin'] }) => string
+  submitExpense: (e: { memberId: string; receipt: NewReceipt; description: string; suggested?: ExpenseRequest['suggested']; origin: ExpenseRequest['origin']; own?: ExpenseOwn }) => string
   /** The treasurer checked it: booked on cost centers and credited to the member. `receipt` is what was checked (corrected if needed). */
   approveExpense: (id: string, e: ExpenseBooking, by: string) => void
   rejectExpense: (id: string, reason: string, by: string) => void
@@ -196,6 +215,7 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
   const [feePayments, setFeePayments] = useState<Record<string, FeePayment>>({})
   const [receipts, setReceipts] = useState<Receipt[]>([...initialReceipts, ...historyReceipts])
   const [exempt, setExempt] = useState<Record<string, NoReceipt>>({})
+  const [ownLimit, setOwnLimit] = useState(100)
   const dropExempt = (lineId?: string) => lineId && setExempt((e) => { const { [lineId]: _gone, ...rest } = e; return rest })
   const [costCenters, setCostCenters] = useState<CostCenter[]>(initialCostCenters)
   const [categories, setCategories] = useState<Category[]>(initialCategories)
@@ -272,18 +292,19 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
     return id
   }
 
-  const book = ({ memberId, receiptId, receipt, splits, text }: ExpenseBooking & { receiptId?: string }): string => {
+  const book = ({ memberId, receiptId, receipt, splits, text, own }: ExpenseBooking & { receiptId?: string; own?: ExpenseOwn }): string => {
       const date = postingDate(receipt.date)
       const lineId = newId('k')
       const rid = receiptId ?? newId('r')
       const who = members.find((m) => m.id === memberId)?.name ?? '?'
       const what = text?.trim() || `${receipt.supplier}${receipt.number ? ` ${receipt.number}` : ''}`
       const mine = { name: receipt.file, supplier: receipt.supplier, number: receipt.number || undefined, amount: receipt.amount, date: receipt.date, note: receipt.note, fuel: receipt.fuel, splits: undefined, paidBy: memberId, lineId, suggestion: undefined }
-      setReceipts((rs) => (receiptId ? rs.map((r) => (r.id === receiptId ? { ...r, ...mine } : r)) : [{ id: rid, source: receipt.source ?? 'Upload', ...mine }, ...rs]))
+      if (own) setExempt((e) => ({ ...e, [lineId]: { reason: own.reason, by: own.doc.first?.by ?? who, at: own.doc.first?.at ?? dmOf(TODAY), own: { ...own.doc, date: receipt.date, amount: receipt.amount } } }))
+      else setReceipts((rs) => (receiptId ? rs.map((r) => (r.id === receiptId ? { ...r, ...mine } : r)) : [{ id: rid, source: receipt.source ?? 'Upload', ...mine }, ...rs]))
       setLines((ls) => [{ id: lineId, date, text: `Auslage ${who}: ${what}`, amount: -receipt.amount, accountId: AUSLAGE_ID, needsReceipt: true }, ...ls])
       setDone((d) => ({ ...d, [lineId]: { kind: 'auslage', memberId, splits } }))
       setBalances((b) => ({ ...b, [memberId]: (b[memberId] ?? 0) + receipt.amount }))
-      addHistory(memberId, { date: dmOf(date), text: `Auslage: ${what}`, amount: receipt.amount, receiptId: rid, source: { kind: 'auslage', lineId } })
+      addHistory(memberId, { date: dmOf(date), text: `Auslage: ${what}`, amount: receipt.amount, receiptId: own ? undefined : rid, source: { kind: 'auslage', lineId } })
       say(`Auslage gebucht: ${eur(receipt.amount)} · ${who} gutgeschrieben`)
       return rid
     }
@@ -310,7 +331,7 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
         addHistory(m, { date: dm, text: `Sprungtag ${dm}: ${l.what}`, amount: -l.price, source: { kind: 'sprungtag' } })
         if (l.cash > 0) addHistory(m, { date: dm, text: `Einzahlung bar (Sprungtag ${dm})`, amount: l.cash, source: { kind: 'kassa', lineId: cashLineId } })
       }
-      const report: DayReport = { id, number, dayId: c.dayId, date: c.date, aircraft: c.aircraft, flights: c.flights, jumps: c.jumps, by: c.by, at: TODAY, lines: c.lines, cashLineId, receiptId }
+      const report: DayReport = { id, number, dayId: c.dayId, date: c.date, aircraft: c.aircraft, flights: c.flights, jumps: c.jumps, by: c.by, at: TODAY, time: c.time, cashBefore: c.cashBefore, lines: c.lines, cashLineId, receiptId }
       setDayReports((r) => [report, ...r])
       say(total > 0 ? `Tag abgeschlossen: ${eur(total)} in die Kassa gebucht, Tagesabschluss-Beleg ${number}` : `Tag abgeschlossen, Tagesabschluss-Beleg ${number}`)
       return report
@@ -392,6 +413,15 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
       for (const l of lines.filter((x) => monthOf(x.date) === month)) note(l.id, by, `Freigabe aufgehoben${was ? ` (war von ${was.by} am ${was.at.split('-').reverse().join('.')} freigegeben)` : ''}`)
       say('Freigabe aufgehoben, die Buchungen sind wieder offen')
     },
+    payout: ({ memberId, amount, accountId, text, date = TODAY }) => {
+      const when = postingDate(date)
+      const who = members.find((m) => m.id === memberId)?.name
+      setBalances((b) => ({ ...b, [memberId]: (b[memberId] ?? 0) - amount }))
+      const lineId = post({ date: when, text: `${text}: ${who}`, amount: -amount, accountId, needsReceipt: false }, { kind: 'konto', memberId })
+      addHistory(memberId, { date: dmOf(when), text, amount: -amount, source: { kind: accountId === CASH_ID ? 'kassa' : 'bank', lineId } })
+      say(`Guthaben ausgezahlt: ${eur(amount)} an ${who} (${accountName(accountId)})`)
+      return lineId
+    },
     cashDeposit: (memberId, amount, text, date = TODAY) => {
       const booking = text?.trim() || 'Einzahlung bar' // optional text, default as before
       const when = postingDate(date)
@@ -427,7 +457,7 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
     },
     setStatement: (month, state, by) => {
       setStatements((x) => ({ ...x, [month]: { state, ...(state === 'versendet' ? { at: TODAY, by } : {}) } }))
-      if (state === 'versendet') say('Kontoauszüge freigegeben und gesendet')
+      if (state === 'versendet') say('Monatsrechnungen freigegeben und gesendet')
     },
     announce: (a) => { setAnnouncements((x) => [{ ...a, id: newId('an'), status: 'offen' }, ...x]); say('Einzahlung gemeldet, der Kassier ordnet sie zu') },
     resolveAnnouncement: (id) => setAnnouncements((x) => x.map((a) => (a.id === id ? { ...a, status: 'erledigt' } : a))),
@@ -453,8 +483,13 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
     },
     unlinkReceipt: (receiptId) => setReceipts((rs) => rs.map((r) => (r.id === receiptId ? { ...r, lineId: undefined } : r))),
     markNoReceipt: (lineId, reason, by) => { setExempt((e) => ({ ...e, [lineId]: { reason, by, at: dmOf(TODAY) } })); say('Ohne Beleg gebucht: als Ausnahme vermerkt') },
-    markOwnReceipt: (lineId, reason, by, own) => { setExempt((e) => ({ ...e, [lineId]: { reason, by, at: dmOf(TODAY), own } })); say(`Eigenbeleg ${own.no} erstellt: als Ausnahme vermerkt`) },
+    markOwnReceipt: (lineId, reason, by, own) => { setExempt((e) => ({ ...e, [lineId]: { reason, by, at: dmOf(TODAY), own } })); say(`Eigenbeleg ${own.no} erstellt${own.needsSecond ? ': zweite Unterschrift fehlt' : ''}`) },
     clearNoReceipt: (lineId) => dropExempt(lineId),
+    ownLimit, setOwnLimit,
+    signOwnReceipt: (lineId, by, time) => {
+      setExempt((e) => { const x = e[lineId]; return x?.own ? { ...e, [lineId]: { ...x, own: { ...x.own, second: { by, at: dmOf(TODAY), time } } } } : e })
+      say(`Eigenbeleg unterschrieben von ${by}`)
+    },
     createReceipt: (r) => {
       const id = newId('r')
       let lineId = r.lineId
@@ -471,10 +506,10 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
     },
     bookExpense: book,
     expenseOf: (receiptId) => expenses.find((x) => x.receiptId === receiptId),
-    submitExpense: ({ memberId, receipt, description, suggested, origin }) => {
-      const rid = newId('r')
-      setReceipts((rs) => [{ id: rid, name: receipt.file, supplier: receipt.supplier, number: receipt.number || undefined, amount: receipt.amount, date: receipt.date, source: receipt.source ?? 'Upload', fuel: receipt.fuel, paidBy: memberId, note: description }, ...rs])
-      setExpenses((x) => [{ id: newId('x'), memberId, receiptId: rid, description, submitted: TODAY, status: 'offen', origin, suggested }, ...x])
+    submitExpense: ({ memberId, receipt, description, suggested, origin, own }) => {
+      const rid = own ? '' : newId('r')
+      if (!own) setReceipts((rs) => [{ id: rid, name: receipt.file, supplier: receipt.supplier, number: receipt.number || undefined, amount: receipt.amount, date: receipt.date, source: receipt.source ?? 'Upload', fuel: receipt.fuel, paidBy: memberId, note: description }, ...rs])
+      setExpenses((x) => [{ id: newId('x'), memberId, receiptId: rid, description, submitted: TODAY, status: 'offen', origin, suggested, own }, ...x])
       say(`Auslage eingereicht: ${eur(receipt.amount)}. Der Kassier prüft sie, danach wird sie gutgeschrieben.`)
       return rid
     },
@@ -482,7 +517,8 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
       const x = expenses.find((r) => r.id === id)
       if (!x || x.status !== 'offen') return
       const { memberId } = e
-      book({ ...e, receiptId: x.receiptId })
+      const second = e.countersign ? { by, at: dmOf(TODAY), time: new Date().toTimeString().slice(0, 5) } : undefined
+      book({ ...e, receiptId: x.receiptId || undefined, own: x.own && { ...x.own, doc: { ...x.own.doc, second } } })
       setExpenses((all) => all.map((r) => (r.id === id ? { ...r, memberId, description: e.text?.trim() || r.description, changedFrom: memberId !== x.memberId ? x.memberId : undefined, status: 'gutgeschrieben', decidedBy: by } : r)))
     },
     rejectExpense: (id, reason, by) => {

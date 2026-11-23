@@ -6,9 +6,10 @@ import { useSession } from '../../session/session'
 import { Badge, Button, Card, Drawer, usePaging } from '../../ui'
 import { dmy } from '../manifest/data'
 import { Field, field, useActor } from '../tickets/parts'
-import { captureOf, captureProblem, ReceiptCapture, toNewReceipt, type Captured } from './capture'
+import { captureOf, captureProblem, EMPTY_CAPTURE, ReceiptCapture, toNewReceipt, type Captured } from './capture'
 import { type ExpenseRequest, type Ledger } from './ledger'
 import { openReceiptFile, perLiter } from './parts'
+import { OwnReceiptDoc } from './ReceiptDialogs'
 
 const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? '?'
 
@@ -37,9 +38,9 @@ export default function ExpenseQueue({ ledger }: { ledger: Ledger }) {
             <div key={x.id} className={`flex flex-wrap items-center gap-x-4 gap-y-1 border-l-4 px-4 py-2.5 text-sm ${x.status === 'offen' ? 'border-l-warn' : 'border-l-transparent opacity-70'}`}>
               <div className="w-24 text-xs text-muted">{dmy(x.submitted)}</div>
               <div className="w-36 truncate font-medium">{nameOf(x.memberId)}</div>
-              <div className="min-w-0 flex-1 basis-48"><div className="truncate">{x.description}</div><div className="truncate text-xs text-muted">{r?.supplier}{r?.number ? ` · ${r.number}` : ''}{r?.fuel ? ` · ${r.fuel.liters} L · ${perLiter(r.fuel.perLiter)}` : ''}</div></div>
+              <div className="min-w-0 flex-1 basis-48"><div className="truncate">{x.description}</div><div className="truncate text-xs text-muted">{x.own ? `Eigenbeleg ${x.own.doc.no} · ${x.own.reason}` : <>{r?.supplier}{r?.number ? ` · ${r.number}` : ''}{r?.fuel ? ` · ${r.fuel.liters} L · ${perLiter(r.fuel.perLiter)}` : ''}</>}</div></div>
               <Badge>{x.origin}</Badge>
-              <div className="w-24 text-right font-semibold tabular-nums">{r ? eur(r.amount) : ''}</div>
+              <div className="w-24 text-right font-semibold tabular-nums">{r ? eur(r.amount) : x.own ? eur(x.own.doc.amount) : ''}</div>
               {x.status === 'offen' ? <Button variant="primary" onClick={() => setOpen(x)}>Prüfen</Button> : <span title={x.rejectReason}><Badge tone="bad">Abgelehnt</Badge></span>}
             </div>
           )
@@ -51,15 +52,20 @@ export default function ExpenseQueue({ ledger }: { ledger: Ledger }) {
   )
 }
 
-/** The check: the numbers as read (correct them if needed), where it is booked, then credit it or send it back with a reason. */
+/**
+ * The check: the numbers as read (correct them if needed), where it is booked, then credit it or send it back with a reason. Without a
+ * receipt the Eigenbeleg signed by the member is shown; [Entwurf] who may countersign does it with the credit.
+ */
 function Review({ request: x, ledger, onClose }: { request: ExpenseRequest; ledger: Ledger; onClose: () => void }) {
   const { guarded } = useSession()
   const actor = useActor()
-  const r = ledger.receipts.find((y) => y.id === x.receiptId)!
-  const { hasAccount } = useApp()
+  const r = ledger.receipts.find((y) => y.id === x.receiptId)
+  const own = x.own
+  const { hasAccount, can } = useApp()
+  const countersign = !!own && can('billing.receipts.countersign') && (own.doc.first?.by ?? nameOf(x.memberId)) !== actor
   const [member, setMember] = useState(x.memberId)
   const [text, setText] = useState(x.description)
-  const [cap, setCap] = useState<Captured>(captureOf(r))
+  const [cap, setCap] = useState<Captured>(r ? captureOf(r) : { ...EMPTY_CAPTURE, file: own?.doc.file ?? '', supplier: own?.doc.payee ?? '', date: own?.doc.date ?? EMPTY_CAPTURE.date, total: String(own?.doc.amount ?? '').replace('.', ',') })
   const ccs = ledger.costCenters.filter((c) => !c.archived)
   const cats = ledger.categories.filter((c) => !c.archived && c.type === 'Kosten')
   const [cc, setCc] = useState(x.suggested?.costCenterId ?? '')
@@ -67,17 +73,18 @@ function Review({ request: x, ledger, onClose }: { request: ExpenseRequest; ledg
   const [rejecting, setRejecting] = useState(false)
   const [why, setWhy] = useState('')
   const fuel = cat === 'k-fuel'
-  const problem = captureProblem(cap, fuel) ?? (!member ? 'Mitglied wählen.' : !cc || !cat ? 'Kostenstelle und Kostenart wählen.' : null)
-  const total = Number(cap.total.replace(',', '.')) || 0
-  const approve = () => { guarded('billing.bank.manage', () => ledger.approveExpense(x.id, { memberId: member, receipt: toNewReceipt(cap, fuel, { source: r.source }), splits: [{ costCenterId: cc, categoryId: cat, percent: 100 }], text }, actor)); onClose() }
+  const problem = (own ? null : captureProblem(cap, fuel)) ?? (!member ? 'Mitglied wählen.' : !cc || !cat ? 'Kostenstelle und Kostenart wählen.' : null)
+  const total = own ? own.doc.amount : Number(cap.total.replace(',', '.')) || 0
+  const receipt = own ? { file: own.doc.file, supplier: own.doc.payee, number: '', date: own.doc.date, amount: own.doc.amount } : toNewReceipt(cap, fuel, { source: r?.source })
+  const approve = () => { guarded('billing.bank.manage', () => ledger.approveExpense(x.id, { memberId: member, receipt, splits: [{ costCenterId: cc, categoryId: cat, percent: 100 }], text, countersign }, actor)); onClose() }
   const reject = () => { guarded('billing.bank.manage', () => ledger.rejectExpense(x.id, why.trim(), actor)); onClose() }
   return (
     <Drawer open title={`Auslage von ${nameOf(x.memberId)}`} onClose={onClose}
       footer={rejecting
         ? <div className="flex gap-2"><Button onClick={() => setRejecting(false)}>Zurück</Button><Button variant="danger" className="flex-1" disabled={!why.trim()} onClick={reject}>Ablehnen</Button></div>
-        : <div className="flex gap-2"><Button onClick={() => setRejecting(true)}>Ablehnen</Button><Button variant="primary" size="lg" className="flex-1" disabled={!!problem} onClick={approve}>{problem ? 'Gutschreiben' : `${eur(total)} gutschreiben`}</Button></div>}>
+        : <div className="flex gap-2"><Button onClick={() => setRejecting(true)}>Ablehnen</Button><Button variant="primary" size="lg" className="flex-1" disabled={!!problem} onClick={approve}>{problem ? 'Gutschreiben' : `${countersign ? 'Gegenzeichnen und ' : ''}${eur(total)} gutschreiben`}</Button></div>}>
       <div className="space-y-4 text-sm">
-        <div className="rounded-xl bg-slate-50 p-3"><div className="font-medium">{x.description}</div><div className="text-xs text-muted">{dmy(x.submitted)} · {x.origin} · <button onClick={() => openReceiptFile(r.name)} className="text-brand hover:underline">{r.name}</button></div></div>
+        <div className="rounded-xl bg-slate-50 p-3"><div className="font-medium">{x.description}</div><div className="text-xs text-muted">{dmy(x.submitted)} · {x.origin}{r && <> · <button onClick={() => openReceiptFile(r.name)} className="text-brand hover:underline">{r.name}</button></>}</div></div>
         {rejecting ? (
           <Field label="Grund für die Ablehnung (das Mitglied sieht ihn)"><input autoFocus aria-label="Grund" value={why} onChange={(e) => setWhy(e.target.value)} className={`${field} h-11 w-full`} /></Field>
         ) : (
@@ -87,7 +94,7 @@ function Review({ request: x, ledger, onClose }: { request: ExpenseRequest; ledg
               {member !== x.memberId && member && <p className="mt-1 text-xs text-warn">Eingereicht von {nameOf(x.memberId)}. Die Gutschrift geht an {nameOf(member)}.</p>}
             </div>
             <Field label="Buchungstext"><input aria-label="Buchungstext" value={text} onChange={(e) => setText(e.target.value)} className={`${field} h-11 w-full`} /></Field>
-            <ReceiptCapture value={cap} onChange={setCap} fuel={fuel} />
+            {own ? <OwnReceiptDoc own={own.doc} reason={own.reason} by={nameOf(x.memberId)} /> : <ReceiptCapture value={cap} onChange={setCap} fuel={fuel} />}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Kostenstelle"><select aria-label="Kostenstelle" value={cc} onChange={(e) => setCc(e.target.value)} className={`${field} w-full`}><option value="">Bitte wählen</option>{ccs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
               <Field label="Kostenart"><select aria-label="Kostenart" value={cat} onChange={(e) => setCat(e.target.value)} className={`${field} w-full`}><option value="">Bitte wählen</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>

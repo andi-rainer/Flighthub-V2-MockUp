@@ -6,8 +6,10 @@ import { TODAY_ISO, useApp } from '../state'
 import { Badge, Banner, Button, Card, Drawer, field, PageHeader, Segmented, usePaging } from '../ui'
 import { ExpenseSubmitDrawer, MyExpenses } from './finance/ExpenseSubmit'
 import { openReceiptFile } from './finance/parts'
-import { payRef, StatementDrawer } from './finance/Statement'
+import { InterimDrawer, payRef, StatementDrawer } from './finance/Statement'
+import { DepositSplit, DocChip, docOfEntry, DOC_TITLE, interimOf, invoiceNo, isCharge, MoneyDocDrawer, requestInterim, uninvoiced, useMoneyDocs, type Interim, type MoneyDoc } from './finance/memberDocs'
 import { dmy } from './manifest/data'
+import MinusNotice from './manifest/MinusNotice'
 
 const dm = (iso: string) => dmy(iso).slice(0, 6)
 const SOURCE = { flug: 'Bordbuch', sprungtag: 'Sprungtag', bank: 'Überweisung', kassa: 'Bar', auslage: 'Auslage', beitrag: 'Beitrag' } as const
@@ -25,6 +27,13 @@ export default function MyAccount() {
   const [expense, setExpense] = useState(false)
   const [reporting, setReporting] = useState(false)
   const [stmt, setStmt] = useState<string | null>(null)
+  const [doc, setDoc] = useState<MoneyDoc | null>(null)
+  const money = useMoneyDocs()
+  const [interim, setInterim] = useState<Interim | null>(null)
+  const interims = money.interims.filter((z) => z.memberId === m.id)
+  const toInvoice = uninvoiced(m.id, history, ledger.statements, money)
+  const askInterim = () => { const z = requestInterim(m.id, history, ledger.statements, m.name); if (z) { setInterim(z); ledger.notify(`Zwischenrechnung ${z.no} erstellt: ${eur(z.total)}`) } }
+  const released = (mm: string) => ledger.statements[`2026-${mm}`]?.state === 'versendet'
   const [copied, setCopied] = useState(false)
   const ref = payRef(m)
   const copy = () => { try { void navigator.clipboard?.writeText(ref) } catch { /* the dummy works without it */ } setCopied(true); setTimeout(() => setCopied(false), 1500) }
@@ -33,9 +42,12 @@ export default function MyAccount() {
   return (
     <>
       <PageHeader title="Mein Konto" subtitle={m.name} actions={<><Button onClick={() => setReporting(true)}><Banknote size={16} /> Einzahlung melden</Button><Button variant="primary" onClick={() => setExpense(true)}>Auslage einreichen</Button></>} />
+      <MinusNotice memberId={m.id} onTopUp={() => setReporting(true)} className="mb-5" />
       {expense && <ExpenseSubmitDrawer onClose={() => setExpense(false)} />}
       <ReportDrawer open={reporting} onClose={() => setReporting(false)} />
-      <StatementDrawer memberId={stmt ? m.id : null} month={stmt ?? undefined} onClose={() => setStmt(null)} />
+      <StatementDrawer released memberId={stmt ? m.id : null} month={stmt ?? undefined} onClose={() => setStmt(null)} />
+      <MoneyDocDrawer doc={doc} onClose={() => setDoc(null)} />
+      <InterimDrawer interim={interim} onClose={() => setInterim(null)} />
       {(balance < 0 || balance < ledger.accountRules.lowBelow) && (
         <div className="mb-5"><Banner tone="warn">
           {balance < 0 ? `Dein Konto ist im Minus: ${eur(-balance)} sind offen.` : `Dein Guthaben ist niedrig (unter ${eur(ledger.accountRules.lowBelow)}).`}
@@ -45,8 +57,8 @@ export default function MyAccount() {
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <div className="space-y-5">
           <Card className="p-5">
-            <div className="text-xs font-medium uppercase tracking-wide text-muted">Kontostand</div>
-            <div className={clsx('mt-1 text-3xl font-semibold tabular-nums', balance < 0 && 'text-bad')}>{eur(balance)}</div>
+            <div className="text-xs font-medium uppercase tracking-wide text-muted">{balance > 0 ? 'Guthaben' : 'Kontostand'}</div>
+            <div className={clsx('mt-1 text-3xl font-semibold tabular-nums', balance < 0 && 'text-bad', balance > 0 && 'text-brand')}>{eur(balance)}</div>
           </Card>
           <Card className="space-y-3 p-5 text-sm">
             <div className="font-semibold">Einzahlen</div>
@@ -62,13 +74,14 @@ export default function MyAccount() {
             )}
           </Card>
           <Card className="p-5 text-sm">
-            <div className="mb-2 font-semibold">Kontoauszüge</div>
+            <div className="mb-2 flex items-center justify-between gap-2"><span className="font-semibold">Rechnungen</span><Button disabled={toInvoice.length === 0} onClick={askInterim}>Rechnung bis heute anfordern</Button></div>
             <div className="divide-y divide-line">
+              {interims.map((z) => <button key={z.no} onClick={() => setInterim(z)} className="flex w-full items-center justify-between py-2 text-left hover:text-brand"><span className="inline-flex items-center gap-2"><FileText size={14} />Zwischenrechnung bis {dm(z.date)}</span><span className="text-xs text-muted">{z.no} · {eur(z.total)} · PDF</span></button>)}
               {statements.map(([month, s]) => {
                 const mm = month.slice(5)
                 const label = `${MONTHS[Number(mm) - 1]} ${month.slice(0, 4)}`
                 return s.state === 'versendet'
-                  ? <button key={month} onClick={() => setStmt(mm)} className="flex w-full items-center justify-between py-2 text-left hover:text-brand"><span className="inline-flex items-center gap-2"><FileText size={14} />{label}</span><span className="text-muted">PDF</span></button>
+                  ? <button key={month} onClick={() => setStmt(mm)} className="flex w-full items-center justify-between py-2 text-left hover:text-brand"><span className="inline-flex items-center gap-2"><FileText size={14} />{label}</span><span className="text-xs text-muted">{invoiceNo(m, mm)} · PDF</span></button>
                   : <div key={month} className="flex items-center justify-between py-2 text-muted"><span className="inline-flex items-center gap-2"><FileText size={14} />{label}</span><span>kommt nach Freigabe</span></div>
               })}
             </div>
@@ -86,6 +99,9 @@ export default function MyAccount() {
                   {e.storno && <Badge>Storno</Badge>}
                   {e.source && <span className="ml-2 rounded-full bg-slate-100 px-2 py-px text-xs text-muted">{SOURCE[e.source.kind]}</span>}
                   {e.receiptId && <ReceiptLink id={e.receiptId} />}
+                  {(() => { const d = docOfEntry(m.id, e, money.docs); return d && <DocChip label={`${DOC_TITLE[d.kind]} ${d.no}`} onOpen={() => setDoc(d)} /> })()}
+                  {(() => { const z = isCharge(e) ? interimOf(m.id, e, money) : undefined; return z && <DocChip label={`Zwischenrechnung ${z.no}`} onOpen={() => setInterim(z)} /> })()}
+                  {isCharge(e) && !e.storno && !interimOf(m.id, e, money) && released(e.date.slice(3, 5)) && <DocChip label={`Monatsrechnung ${invoiceNo(m, e.date.slice(3, 5))}`} onOpen={() => setStmt(e.date.slice(3, 5))} />}
                 </span>
                 <span className={clsx('font-medium tabular-nums', e.amount < 0 ? 'text-bad' : 'text-ok', e.reversed && 'opacity-50')}>{e.amount > 0 ? '+ ' : '− '}{eur(Math.abs(e.amount))}</span>
               </div>
@@ -109,6 +125,7 @@ function ReceiptLink({ id }: { id: string }) {
 /** [Entwurf] The member says money is on its way or was handed over; the treasurer finds it in the account and matches it with the bank line or books the cash. */
 function ReportDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { ledger, persona } = useApp()
+  const balance = ledger.balances[persona.memberId] ?? 0
   const [kind, setKind] = useState<'ueberweisung' | 'bar'>('ueberweisung')
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(TODAY_ISO)
@@ -121,6 +138,7 @@ function ReportDrawer({ open, onClose }: { open: boolean; onClose: () => void })
       <div className="space-y-4 text-sm">
         <Segmented<'ueberweisung' | 'bar'> value={kind} onChange={setKind} options={[{ value: 'ueberweisung', label: 'Überwiesen' }, { value: 'bar', label: 'Bar übergeben' }]} />
         <label className="block font-medium">Betrag (€)<input autoFocus inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={clsx(field, 'mt-1 h-11 w-full tabular-nums')} /></label>
+        <DepositSplit memberId={persona.memberId} balance={balance} amount={value} />
         <label className="block font-medium">{kind === 'bar' ? 'Übergeben am' : 'Überwiesen am'}<input type="date" value={date} max={TODAY_ISO} onChange={(e) => setDate(e.target.value)} className={clsx(field, 'mt-1 h-11 w-full')} /></label>
         <label className="block font-medium">Kommentar (optional)<input value={note} onChange={(e) => setNote(e.target.value)} className={clsx(field, 'mt-1 h-11 w-full')} /></label>
       </div>

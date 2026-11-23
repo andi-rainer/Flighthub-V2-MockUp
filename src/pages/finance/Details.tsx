@@ -75,7 +75,8 @@ function LineDrawer({ line, ledger, show, onClose }: { line: BankLine; ledger: L
 
   return (
     <>
-      <Drawer open={!hidden && !ruleForm} title="Buchung" size="md" onClose={onClose}
+      <div className={hidden ? 'hidden' : undefined}>
+      <Drawer open={!ruleForm} title="Buchung" size="md" onClose={onClose}
         footer={locked || !changed ? <div className="flex justify-end"><Button onClick={onClose}>Schließen</Button></div> : <div className="flex justify-end gap-2"><Button onClick={onClose}>Abbrechen</Button><Button variant="primary" disabled={!splitsValid} onClick={save}>Änderungen speichern</Button></div>}>
         <div className="space-y-5 text-sm">
           <div className="rounded-xl bg-slate-50 p-3">
@@ -120,6 +121,7 @@ function LineDrawer({ line, ledger, show, onClose }: { line: BankLine; ledger: L
           )}
         </div>
       </Drawer>
+      </div>
       {ruleForm && <RuleForm ledger={ledger} rule={ruleForm} onClose={() => setRuleForm(null)} />}
     </>
   )

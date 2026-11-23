@@ -28,7 +28,7 @@ export default function AccountStrip({ ledger, value, onChange }: { ledger: Ledg
   const active = ledger.accounts.filter((a) => !a.archived)
   const old = ledger.accounts.filter((a) => a.archived)
   const todoOf = (id: string) => ledger.lines.filter((l) => l.accountId === id && isTodo(lineStatus(l, ledger))).length
-  const exemptOf = (id: string) => ledger.lines.filter((l) => l.accountId === id && proofOf(l, ledger) === 'ausnahme').length
+  const exemptOf = (id: string) => ledger.lines.filter((l) => l.accountId === id && ['fehlt', 'ausnahme', 'unterschrift'].includes(proofOf(l, ledger))).length
   const [syncing, setSyncing] = useState<string | null>(null)
   const [counting, setCounting] = useState<string | null>(null)
   const [, rerender] = useState(0)

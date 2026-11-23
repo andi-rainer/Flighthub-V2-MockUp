@@ -4,11 +4,13 @@ import { useState } from 'react'
 import { eur, type BankLine, type Receipt } from '../../data'
 import MemberPicker from '../../MemberPicker'
 import { useApp, TODAY_ISO } from '../../state'
+import { useSession } from '../../session/session'
 import { Badge, Button, Drawer, Segmented } from '../../ui'
 import { dmy } from '../manifest/data'
 import { Field, field, useActor } from '../tickets/parts'
 import { captureProblem, EMPTY_CAPTURE, ReceiptCapture, toNewReceipt, type Captured } from './capture'
-import { NO_RECEIPT_REASONS, type Ledger, type OwnReceipt } from './ledger'
+import { dmOf, NO_RECEIPT_REASONS, type Ledger, type NoReceipt, type OwnReceipt, type OwnSignature } from './ledger'
+import { firstSignerOf, LATER } from './status'
 import { Dot, openReceiptFile } from './parts'
 import { useSuppliers } from './supplierStore'
 
@@ -124,8 +126,27 @@ export function ReceiptForm({ line, ledger, onClose, start, onSaved }: {
   )
 }
 
-/** The Eigenbeleg as a document: what the auditor sees instead of the supplier's invoice. */
-export function OwnReceiptDoc({ own, reason, by }: { own: OwnReceipt; reason: string; by: string }) {
+/** [Entwurf] Time of a signature, "14:32". */
+export const nowTime = () => new Date().toTimeString().slice(0, 5)
+const signed = (x?: OwnSignature) => (x ? `${x.by}, ${x.at}${x.time ? ` ${x.time}` : ''}` : '–')
+
+/** Next number of an Eigenbeleg in the year of `iso` (bookings and Auslagen still waiting for the treasurer). */
+export function nextOwnNo(ledger: Ledger, iso: string) {
+  const y = iso.slice(0, 4)
+  const n = Object.values(ledger.exempt).filter((e) => e.own?.no.startsWith(`EB-${y}`)).length + ledger.expenses.filter((x) => x.own && x.status === 'offen' && x.own.doc.no.startsWith(`EB-${y}`)).length + 1
+  return `EB-${y}-${String(n).padStart(3, '0')}`
+}
+
+/** Who may countersign this Eigenbeleg now: the permission, and never the person who signed first. */
+export function useCountersign() {
+  const { can } = useApp()
+  const actor = useActor()
+  return (ex: NoReceipt | undefined) => !!ex?.own && !ex.own.second && can('billing.receipts.countersign') && firstSignerOf(ex) !== actor
+}
+
+/** The Eigenbeleg as a document: what the auditor sees instead of the supplier's invoice, with both signatures. */
+export function OwnReceiptDoc({ own, reason, by, at }: { own: OwnReceipt; reason: string; /** First signer of older ones. */ by: string; at?: string }) {
+  const first = own.first ?? { by, at: at ?? '' }
   return (
     <div className="rounded-lg border border-line bg-white p-4 font-serif text-[13px] text-ink shadow-sm">
       <div className="flex items-start justify-between border-b border-line pb-2"><div className="text-base font-semibold">Eigenbeleg</div><div className="text-right text-xs"><div className="font-semibold">{own.no}</div><div>{dmy(own.date)}</div></div></div>
@@ -135,54 +156,91 @@ export function OwnReceiptDoc({ own, reason, by }: { own: OwnReceipt; reason: st
         <dt className="text-muted">Zweck</dt><dd>{own.purpose || '–'}</dd>
         <dt className="text-muted">Kein Originalbeleg</dt><dd>{reason || '–'}</dd>
       </dl>
-      <div className="mt-3 border-t border-line pt-2 text-xs text-muted">Erstellt und bestätigt von {by} am {dmy(TODAY_ISO)}</div>
+      <div className="mt-4 grid grid-cols-2 gap-4 text-xs">
+        <div className="border-t border-line pt-1"><div className="text-muted">1. Unterschrift</div><div className="font-sans font-medium">{signed(first)}</div></div>
+        <div className="border-t border-line pt-1"><div className="text-muted">2. Unterschrift (Kassier oder Obmann)</div><div className={clsx('font-sans font-medium', !own.second && 'text-warn')}>{own.second ? signed(own.second) : 'fehlt'}</div></div>
+      </div>
+    </div>
+  )
+}
+
+/** Payee, purpose and the reason of an Eigenbeleg: shared by the booking and the Auslage without receipt. */
+export function OwnFields({ reasons, reason, onReason, other, onOther, payee, onPayee, purpose, onPurpose }: {
+  reasons: readonly string[]; reason: string; onReason: (r: string) => void; other: string; onOther: (s: string) => void
+  payee: string; onPayee: (s: string) => void; purpose: string; onPurpose: (s: string) => void
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="font-medium">Warum gibt es keinen Beleg?</div>
+      <div className="flex flex-wrap gap-2">{reasons.map((r) => <button key={r} onClick={() => onReason(r)} className={clsx('rounded-lg border px-3 py-2', reason === r ? 'border-brand bg-brand-soft text-brand' : 'border-line hover:bg-slate-50')}>{r}</button>)}</div>
+      {reason === 'Sonstiges' && <input aria-label="Grund" value={other} onChange={(e) => onOther(e.target.value)} placeholder="Grund kurz beschreiben" className={`${field} w-full`} />}
+      {reason && reason !== LATER && (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Empfänger (wer bekam das Geld)"><input aria-label="Empfänger" value={payee} onChange={(e) => onPayee(e.target.value)} className={`${field} w-full`} /></Field>
+          <Field label="Zweck"><input aria-label="Zweck" value={purpose} onChange={(e) => onPurpose(e.target.value)} className={`${field} w-full`} /></Field>
+        </div>
+      )}
     </div>
   )
 }
 
 /**
- * An exception, never silent: the reason, the person and the day stay on the booking until a receipt is linked. Optionally the club writes
- * an Eigenbeleg (payee, purpose) as the document of the exception. `ownOnly`: the exception exists, only the Eigenbeleg is added.
+ * Kein Beleg: one way, the Eigenbeleg. The reason, who got the money and what for; the person creating it signs first, Kassier or Obmann
+ * countersign. Only "Beleg kommt später" is a reminder without Eigenbeleg (stays open). `ownOnly`: a reminder or an older exception exists.
  */
 export function NoReceiptForm({ line, ledger, onClose, ownOnly }: { line: BankLine; ledger: Ledger; onClose: () => void; ownOnly?: boolean }) {
   const actor = useActor()
+  const { guarded } = useSession()
   const ex = ledger.exempt[line.id]
-  const known = ex && (NO_RECEIPT_REASONS as readonly string[]).includes(ex.reason) ? ex.reason : ex ? 'Sonstiges' : ''
+  const reasons = ownOnly ? NO_RECEIPT_REASONS.filter((r) => r !== LATER) : NO_RECEIPT_REASONS
+  const known = ex && ex.reason !== LATER ? ((NO_RECEIPT_REASONS as readonly string[]).includes(ex.reason) ? ex.reason : 'Sonstiges') : ''
   const [reason, setReason] = useState(known)
   const [other, setOther] = useState(known === 'Sonstiges' ? ex?.reason ?? '' : '')
-  const [sure, setSure] = useState(!!ownOnly)
-  const [own, setOwn] = useState(!!ownOnly)
   const [payee, setPayee] = useState('')
   const [purpose, setPurpose] = useState(line.bookingText ?? line.text)
+  const [sure, setSure] = useState(false)
   const text = reason === 'Sonstiges' ? other.trim() : reason
-  const later = reason === 'Beleg kommt später'
-  const n = Object.values(ledger.exempt).filter((e) => e.own).length + 1
-  const no = `EB-${line.date.slice(0, 4)}-${String(n).padStart(3, '0')}`
-  const doc: OwnReceipt = { no, payee: payee.trim(), purpose: purpose.trim(), date: line.date, amount: Math.abs(line.amount), file: `${no}.pdf` }
-  const ok = !!text && sure && (!own || (!!doc.payee && !!doc.purpose))
-  const save = () => { if (own && !later) ledger.markOwnReceipt(line.id, text, actor, doc); else ledger.markNoReceipt(line.id, text, actor); onClose() }
+  const later = reason === LATER
+  const no = nextOwnNo(ledger, line.date)
+  const doc: OwnReceipt = { no, payee: payee.trim(), purpose: purpose.trim(), date: line.date, amount: Math.abs(line.amount), file: `${no}.pdf`, needsSecond: true, first: { by: actor, at: dmOf(TODAY_ISO), time: nowTime() } }
+  const ok = !!text && (later || (!!doc.payee && !!doc.purpose && sure))
+  const save = () => {
+    if (later) ledger.markNoReceipt(line.id, text, actor)
+    else guarded('billing.bank.manage', () => ledger.markOwnReceipt(line.id, text, actor, doc))
+    onClose()
+  }
   return (
-    <Drawer open title={ownOnly ? 'Eigenbeleg erstellen' : 'Ohne Beleg buchen'} onClose={onClose} footer={<div className="flex justify-end gap-2"><Button onClick={onClose}>Abbrechen</Button><Button variant="primary" disabled={!ok} onClick={save}>{own && !later ? 'Eigenbeleg erstellen' : 'Als Ausnahme vermerken'}</Button></div>}>
+    <Drawer open title={ownOnly ? 'Eigenbeleg erstellen' : 'Kein Beleg'} onClose={onClose} footer={<div className="flex justify-end gap-2"><Button onClick={onClose}>Abbrechen</Button><Button variant="primary" disabled={!ok} onClick={save}>{later ? 'Erinnerung vermerken' : 'Unterschreiben und erstellen'}</Button></div>}>
       <div className="space-y-4 text-sm">
         <div className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-muted">{dmy(line.date)} · {ledger.accountName(line.accountId)}</div><div>{line.text}</div><div className="font-semibold tabular-nums">{eur(line.amount)}</div></div>
-        {!ownOnly && (
+        <OwnFields reasons={reasons} reason={reason} onReason={setReason} other={other} onOther={setOther} payee={payee} onPayee={setPayee} purpose={purpose} onPurpose={setPurpose} />
+        {text && !later && (
           <>
-            <div className="font-medium">Warum gibt es keinen Beleg?</div>
-            <div className="flex flex-wrap gap-2">{NO_RECEIPT_REASONS.map((r) => <button key={r} onClick={() => setReason(r)} className={clsx('rounded-lg border px-3 py-2', reason === r ? 'border-brand bg-brand-soft text-brand' : 'border-line hover:bg-slate-50')}>{r}</button>)}</div>
-            {reason === 'Sonstiges' && <input aria-label="Grund" value={other} onChange={(e) => setOther(e.target.value)} placeholder="Grund kurz beschreiben" className={`${field} w-full`} />}
-            <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={sure} onChange={(e) => setSure(e.target.checked)} />Ich bestätige, dass es dazu keinen Beleg gibt.</label>
-            {text && !later && <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={own} onChange={(e) => setOwn(e.target.checked)} />Eigenbeleg dazu erstellen</label>}
+            <OwnReceiptDoc own={doc} reason={text} by={actor} />
+            <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={sure} onChange={(e) => setSure(e.target.checked)} />Ich unterschreibe den Eigenbeleg als {actor}.</label>
           </>
         )}
-        {own && !later && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Empfänger (wer bekam das Geld)"><input aria-label="Empfänger" value={payee} onChange={(e) => setPayee(e.target.value)} className={`${field} w-full`} /></Field>
-              <Field label="Zweck"><input aria-label="Zweck" value={purpose} onChange={(e) => setPurpose(e.target.value)} className={`${field} w-full`} /></Field>
-            </div>
-            <OwnReceiptDoc own={doc} reason={text} by={actor} />
-          </div>
-        )}
+      </div>
+    </Drawer>
+  )
+}
+
+/** The second signature of an Eigenbeleg: Kassier or Obmann, never the person who signed first. Only then does it cover the booking. */
+export function SecondSignForm({ line, ledger, onClose }: { line: BankLine; ledger: Ledger; onClose: () => void }) {
+  const ex = ledger.exempt[line.id]
+  const actor = useActor()
+  const { guarded } = useSession()
+  const may = useCountersign()(ex)
+  const [sure, setSure] = useState(false)
+  if (!ex?.own) return null
+  const save = () => { guarded('billing.receipts.countersign', () => ledger.signOwnReceipt(line.id, actor, nowTime())); onClose() }
+  return (
+    <Drawer open title={`Eigenbeleg ${ex.own.no} gegenzeichnen`} onClose={onClose} footer={<div className="flex justify-end gap-2"><Button onClick={onClose}>Abbrechen</Button><Button variant="primary" disabled={!may || !sure} onClick={save}>Gegenzeichnen</Button></div>}>
+      <div className="space-y-4 text-sm">
+        <OwnReceiptDoc own={ex.own} reason={ex.reason} by={ex.by} at={ex.at} />
+        {may
+          ? <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5" checked={sure} onChange={(e) => setSure(e.target.checked)} />Ich habe den Eigenbeleg geprüft und unterschreibe als {actor}.</label>
+          : <p className="text-warn">{firstSignerOf(ex) === actor ? 'Die erste Unterschrift ist von dir.' : 'Kein Recht zum Gegenzeichnen.'}</p>}
       </div>
     </Drawer>
   )

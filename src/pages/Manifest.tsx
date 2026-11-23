@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { comingFrom } from '../backTo'
 import { useApp } from '../state'
 import { Badge, Button, Card, PageHeader, Segmented, usePaging } from '../ui'
+import { DAY_CHECK, useDayCheck } from './manifest/dayCheck'
 import DayForm from './manifest/DayForm'
 import DutyPlan from './manifest/DutyPlan'
 import ManifestSettingsPage from './manifest/Settings'
@@ -15,7 +16,8 @@ const FROM = { label: 'Manifest', to: '/manifest' }
 
 /** Entry of the menu item "Manifest": the days. The running day is one tap away, other days can be planned, changed and looked at. */
 export default function Manifest() {
-  const { days, loads, bookings, can, settings } = useApp()
+  const { days, loads, bookings, can, settings, ledger } = useApp()
+  const dayCheck = useDayCheck()
   const nav = useNavigate()
   const [params, setParams] = useSearchParams()
   const mayPrices = can('manifest.settings.edit')
@@ -47,7 +49,7 @@ export default function Manifest() {
       {running && filter === 'kommend' && (
         <Card className="mb-5 flex flex-wrap items-center gap-4 border-ok/40 bg-ok-soft/40 p-5">
           <div className="min-w-0 flex-1 basis-60">
-            <div className="flex items-center gap-2"><Badge tone="ok">Läuft</Badge><span className="text-lg font-semibold">{dayName(running.date)}</span></div>
+            <div className="flex flex-wrap items-center gap-2"><Badge tone="ok">Läuft</Badge><span className="text-lg font-semibold">{dayName(running.date)}</span></div>
             <div className="mt-1 text-sm text-muted">{running.aircraft} · {flights(running)} Flüge · {tandemLine(running)}</div>
           </div>
           <Button variant="primary" size="lg" onClick={() => open(running)}>Zum Manifest <ArrowRight size={18} /></Button>
@@ -69,7 +71,12 @@ export default function Manifest() {
             {d.note && <span className="text-sm text-muted">{d.note}</span>}
             <span className="text-sm text-muted">{flights(d)} {flights(d) === 1 ? 'Flug' : 'Flüge'}</span>
             {d.status === 'geplant' && missingDuties(d, settings.roles).length > 0 && <Badge tone="warn">Dienst fehlt</Badge>}
-            <Badge tone={statusTone[d.status]}>{statusLabel[d.status]}</Badge>
+            {(() => {
+              // [Entwurf] A closed day shows where its check stands; a day sent back runs again until it is closed anew.
+              const c = dayCheck.current(ledger.dayReports, d.id)
+              if (d.status === 'abgeschlossen' && c) return <Badge tone={DAY_CHECK[c.state].tone}>{DAY_CHECK[c.state].label}</Badge>
+              return <><Badge tone={statusTone[d.status]}>{statusLabel[d.status]}</Badge></>
+            })()}
           </div>
         ))}
         {paging.rows.length === 0 && <p className="px-5 py-8 text-center text-sm text-muted">{filter === 'vergangen' ? 'Noch keine vergangenen Tage.' : 'Keine weiteren Tage geplant.'}</p>}

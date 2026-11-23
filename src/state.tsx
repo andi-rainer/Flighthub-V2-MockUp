@@ -19,7 +19,7 @@ export const TODAY_ISO = '2026-11-07'
 /** Function assignments with validity, like `user_functions`. */
 export const initialAssignments: Record<string, Assignment[]> = {
   m1: [{ fn: F.SPORT_JUMPER }],
-  m2: [{ fn: F.SPORT_JUMPER }, { fn: F.SKYDIVE_PILOT }, { fn: F.PILOT }],
+  m2: [{ fn: F.SPORT_JUMPER }, { fn: F.SKYDIVE_PILOT }, { fn: F.PILOT }, { fn: F.CHAIRMAN }],
   m3: [{ fn: F.TANDEM_MASTER, until: '2027-06-30' }, { fn: F.AUDITOR }],
   m4: [{ fn: F.SPORT_JUMPER }, { fn: F.TANDEM_MASTER }],
   m5: [{ fn: F.PILOT }, { fn: F.FLIGHT_INSTRUCTOR }, { fn: F.TREASURER }],
