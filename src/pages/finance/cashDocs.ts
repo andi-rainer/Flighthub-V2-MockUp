@@ -15,12 +15,40 @@ export interface DayReportLine {
   /** [Entwurf] Members: balance of the Betriebskonto before the closing. */ before?: number
   /** [Entwurf] Members: jumps flown and seats paid without jumping. */ jumps?: number; paidSeats?: number
   /** [Entwurf] The flights of the line ("Flug 2", "Flug 1, 3"). */ flight?: string
+  /** [Entwurf] Members: settled during the day at this time ("15:42"); the line was booked then, not at the closing. */ time?: string
+  /** [Entwurf] Members: the Quittung of the cash (QU-…). */ doc?: string
+  /** [Entwurf] Members: Zusatzkosten charged with this line (included in `price`). */ extras?: { name: string; price: number }[]
+  /** [Entwurf] Members: the payment was corrected at the closing ("vom Konto → bar: Grund"). */ fix?: string
 }
+/** [Entwurf] One Kassa booking of the day: settled at check-out, a deposit, a tandem guest, the remaining guest cash at the closing. */
+export interface DayCashLine { time?: string; who: string; amount: number; lineId?: string; /** Quittung or ticket/voucher code. */ doc?: string }
+/** [Entwurf] A tandem guest booked for the day who did not fly, and what the closing decided. */
+export interface NotFlownLine {
+  who: string; what?: 'Gutschein' | 'Ticket'; code?: string
+  outcome: 'verschoben' | 'nicht_erschienen'
+  /** Wetter, Technik, Gast verhindert or a free text. */ reason?: string
+  /** A guest who was not checked in and still keeps the jump: the reason of the exception. */ kulanz?: string
+  /** "Sa 14.11.2026 · 10:00–12:00"; none: the date is open. */ newDate?: string
+  paid?: boolean
+}
+/** "Markus Köhler: verschoben (Wetter), Gutschein GS-1042 bleibt gültig, neuer Termin Sa 14.11.2026 · 10:00–12:00" */
+export function notFlownSentence(l: NotFlownLine) {
+  const item = l.what ? `${l.what}${l.code ? ` ${l.code}` : ''}` : l.code ?? 'Buchung'
+  if (l.outcome === 'nicht_erschienen') return `${l.who}: nicht erschienen, ${item} verfällt${l.what && !l.paid ? ', Zahlung bleibt offen' : ''}`
+  return `${l.who}: verschoben (${[l.reason, l.kulanz && `Kulanz: ${l.kulanz}`].filter(Boolean).join(', ')}), ${item} bleibt gültig, ${l.newDate ? `neuer Termin ${l.newDate}` : 'Termin offen'}`
+}
+/** "Flug 1, 3" and seats paid without a jump: "Flug 1, 3 · ohne Sprung: Flug 2". */
+export const flightText = (jumped: number[], seats: number[] = []) =>
+  [jumped.length ? `Flug ${jumped.join(', ')}` : '', seats.length ? `ohne Sprung: Flug ${seats.join(', ')}` : ''].filter(Boolean).join(' · ') || undefined
+
 export interface DayReport {
   id: string; /** "TA-2026-11-07" */ number: string; dayId: string; /** ISO */ date: string; aircraft: string; flights: number; jumps: number
   by: string; /** ISO */ at: string
   /** [Entwurf] Time of the closing ("17:42") and the Kassa before it. */ time?: string; cashBefore?: number
   lines: DayReportLine[]
+  /** [Entwurf] Tandem guests of the day who did not fly: rescheduled or no-show. */ notFlown?: NotFlownLine[]
+  /** [Entwurf] Members were settled one by one during the day (check-out or the closing), each with its own booking. */ settled?: boolean
+  /** [Entwurf] Every Kassa booking of the day with its time. */ cashBookings?: DayCashLine[]
   /** The Kassa booking of the takings (none when no cash came in) and the receipt that carries this report. */
   cashLineId?: string; receiptId?: string
 }

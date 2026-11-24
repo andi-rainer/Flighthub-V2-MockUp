@@ -10,7 +10,7 @@ export function useManifestSync() {
   return {
     add: (b: TandemBooking) => setBookings((all) => [...all, b]),
     /** Moves the guest to another window; a place on a flight of the old day is given up. */
-    move: (id: string, dayId: string, windowId: string) => { unplan(id); patch(id, { dayId, windowId }) },
+    move: (id: string, dayId: string, windowId: string) => { unplan(id); patch(id, { dayId, windowId, state: 'gebucht' }) },
     cancel: (id: string) => { unplan(id); patch(id, { state: 'storniert' }) },
     reinstate: (id: string) => patch(id, { state: 'gebucht' }),
   }

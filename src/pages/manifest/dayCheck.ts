@@ -12,6 +12,7 @@ export interface DayCorrection extends DayStamp { who: string; memberId: string;
 export interface DayReview {
   /** Checked and locked. */ check?: DayStamp
   /** Corrections by the checker before locking: each one is booked as the difference on the member's Betriebskonto. */ corrections?: DayCorrection[]
+  /** Members chosen at closing for the mail "Konto im Minus"; it goes out only at "Prüfen und festschreiben", with the balance then. */ minusQueued?: string[]
 }
 export type DayCheckState = 'pruefung' | 'fest'
 export const DAY_CHECK: Record<DayCheckState, { label: string; tone: 'warn' | 'bad' | 'ok' }> = {
@@ -43,6 +44,8 @@ export function useDayCheck() {
     open: (reports: DayReport[]) => reports.filter((r) => checkStateOf(s.reviews[r.id]) === 'pruefung').sort((a, b) => a.date.localeCompare(b.date)),
     confirm: (reportId: string, stamp: DayStamp) => patch(reportId, { check: stamp }),
     correct: (reportId: string, c: DayCorrection) => patch(reportId, { corrections: [...(state.reviews[reportId]?.corrections ?? []), c] }),
+    /** At closing: remember who gets "Konto im Minus" once the day is locked. */
+    queueMinus: (reportId: string, memberIds: string[]) => patch(reportId, { minusQueued: memberIds }),
     messages: s.messages,
     sendMinus: (list: Omit<MinusMessage, 'id'>[]) => set({ ...state, messages: [...list.map((m, i) => ({ ...m, id: `mm-${Date.now()}-${i}` })), ...state.messages] }),
   }

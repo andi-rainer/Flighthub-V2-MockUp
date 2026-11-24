@@ -6,9 +6,10 @@ import { TODAY_ISO, useApp } from '../../state'
 import { AUSLAGE_ID, CASH_ID, eur, members, type Member } from '../../data'
 import MemberPicker from '../../MemberPicker'
 import { useSession } from '../../session/session'
-import { ActionPanel, Badge, Button, Card, Drawer, field, RowMenu, Segmented, Stat, usePaging } from '../../ui'
+import { ActionPanel, Badge, Button, Card, Drawer, field, RowMenu, Segmented, Stat, useConfirm, usePaging } from '../../ui'
 import { comingFrom } from '../../backTo'
 import { dmy } from '../manifest/data'
+import { Provisional, useProvisional } from '../manifest/closingPreview'
 import { ExpenseDrawer, ExpenseForm } from './Expense'
 import { type Entry, type Ledger } from './ledger'
 import { openReceiptFile } from './parts'
@@ -194,6 +195,7 @@ function Statements({ count, minus, plus }: { count: number; minus: number; plus
   const { ledger, can, persona } = useApp()
   const { guarded } = useSession()
   const [preview, setPreview] = useState(false)
+  const cf = useConfirm()
   const s = ledger.statements[STMT_MONTH] ?? { state: 'entwurf' as const }
   const at = stmtSteps.findIndex((x) => x.id === s.state)
   const by = members.find((m) => m.id === persona.memberId)?.name ?? ''
@@ -219,12 +221,13 @@ function Statements({ count, minus, plus }: { count: number; minus: number; plus
         {mayApprove && s.state === 'freigabe' && (
           <>
             <Button onClick={() => set('entwurf')}>Zurück an Entwurf</Button>
-            <Button variant="primary" onClick={() => set('versendet')}>Freigeben und an {count} Mitglieder senden</Button>
+            <Button variant="primary" onClick={() => cf.ask({ title: 'Monatsrechnungen senden?', lines: [`${count} Rechnungen Oktober 2026 gehen an die Mitglieder.`, `${minus} davon mit Zahlungshinweis.`, 'Danach nicht mehr änderbar.'], confirm: `An ${count} Mitglieder senden`, run: () => set('versendet') })}>Freigeben und an {count} Mitglieder senden</Button>
           </>
         )}
         {s.state === 'versendet' && <Badge tone="ok">Versendet am {s.at ? dmy(s.at).slice(0, 6) : ''} an {count} Mitglieder{s.by ? ` · ${s.by}` : ''}</Badge>}
       </div>
       <StatementPreview open={preview} onClose={() => setPreview(false)} />
+      {cf.dialog}
     </Card>
   )
 }
@@ -303,6 +306,7 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
   const { club, can, persona } = useApp()
   const { guarded } = useSession()
   const money = useMoneyDocs()
+  const cf = useConfirm()
   const [amount, setAmount] = useState('')
   const [reason, setReason] = useState('')
   const [reasons, setReasons] = useState<Record<string, string>>({})
@@ -328,6 +332,7 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
   const likely = ledger.lines.filter((l) => l.amount > 0 && !ledger.done[l.id] && hint(l.text))
   const told = ledger.announcements.filter((a) => a.memberId === member.id && a.status === 'offen')
   const history = ledger.history[member.id] ?? []
+  const provisional = useProvisional()
   const paging = usePaging(history, `${member.id}|${history.length}`, [10, 25, 50])
   const reminder = ledger.reminders[member.id]
   const closeDeposit = () => { setDepositing(false); setAmount(''); setText(''); setDay(TODAY_ISO); setReason('') }
@@ -338,6 +343,7 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
     if (balance + value > capOf(member.id, money)) guarded('billing.accounts.manage', run)
     else run()
   }
+  const askDeposit = (via: 'bank' | 'kassa', value: number, dateIso: string, book: () => void, why: string | undefined, lineId?: string, text?: string) => cf.ask({ title: via === 'kassa' ? 'Bar einbuchen?' : 'Überweisung zuweisen?', lines: [`${member.name}: ${eur(value)} auf das Betriebskonto`, text ?? (via === 'kassa' ? `Bar eingezahlt am ${dmy(dateIso)}, Kassa wird mehr.` : `Bankzeile vom ${dmy(dateIso)}`)], confirm: `${eur(value)} buchen`, run: () => deposit(via, value, dateIso, book, why, lineId) })
   const manage = wide && can('billing.accounts.manage')
   const stornoEntry = stornoAt !== null ? history[stornoAt] : undefined
 
@@ -408,9 +414,9 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
                 <div className="flex items-center justify-between gap-3"><span>{a.kind === 'bar' ? 'Bar übergeben' : 'Überwiesen'} am {dm(a.date)}{a.note && <span className="text-muted"> · {a.note}</span>}</span><b className="tabular-nums">{eur(a.amount)}</b></div>
                 {(a.kind === 'bar' || match) && <DepositSplit memberId={member.id} balance={balance} amount={a.amount} reason={reasons[a.id]} onReason={(r) => setReasons({ ...reasons, [a.id]: r })} />}
                 {a.kind === 'bar'
-                  ? <Button disabled={depositBlocked(member.id, balance, a.amount, reasons[a.id] ?? '')} onClick={() => deposit('kassa', a.amount, a.date, () => { ledger.cashDeposit(member.id, a.amount, '', a.date); ledger.resolveAnnouncement(a.id) }, reasons[a.id])}>Bar einbuchen {eur(a.amount)}</Button>
+                  ? <Button disabled={depositBlocked(member.id, balance, a.amount, reasons[a.id] ?? '')} onClick={() => askDeposit('kassa', a.amount, a.date, () => { ledger.cashDeposit(member.id, a.amount, '', a.date); ledger.resolveAnnouncement(a.id) }, reasons[a.id])}>Bar einbuchen {eur(a.amount)}</Button>
                   : match
-                    ? <div className="flex items-center gap-3"><span className="min-w-0 flex-1 truncate text-xs text-muted">Bankzeile: {match.text} · {dm(match.date)}</span><Button disabled={depositBlocked(member.id, balance, a.amount, reasons[a.id] ?? '')} onClick={() => deposit('bank', match.amount, match.date, () => { ledger.assign(match.id, { kind: 'konto', memberId: member.id }); ledger.resolveAnnouncement(a.id) }, reasons[a.id], match.id)}>Zuweisen</Button></div>
+                    ? <div className="flex items-center gap-3"><span className="min-w-0 flex-1 truncate text-xs text-muted">Bankzeile: {match.text} · {dm(match.date)}</span><Button disabled={depositBlocked(member.id, balance, a.amount, reasons[a.id] ?? '')} onClick={() => askDeposit('bank', match.amount, match.date, () => { ledger.assign(match.id, { kind: 'konto', memberId: member.id }); ledger.resolveAnnouncement(a.id) }, reasons[a.id], match.id, match.text)}>Zuweisen</Button></div>
                     : <div className="text-xs text-muted">Noch keine passende Überweisung auf dem Konto.</div>}
                 <button onClick={() => ledger.resolveAnnouncement(a.id)} className="text-xs text-muted hover:text-ink">Meldung schließen</button>
               </div>
@@ -427,7 +433,7 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
               <div className="flex items-center gap-3">
                 <div className="min-w-0 flex-1"><div className="truncate font-medium">{l.text}</div><div className="text-xs text-muted">{dmy(l.date)}</div></div>
                 <div className="font-semibold tabular-nums">{eur(l.amount)}</div>
-                <Button disabled={depositBlocked(member.id, balance, l.amount, reasons[l.id] ?? '')} onClick={() => deposit('bank', l.amount, l.date, () => ledger.assign(l.id, { kind: 'konto', memberId: member.id }), reasons[l.id], l.id)}>Zuweisen</Button>
+                <Button disabled={depositBlocked(member.id, balance, l.amount, reasons[l.id] ?? '')} onClick={() => askDeposit('bank', l.amount, l.date, () => ledger.assign(l.id, { kind: 'konto', memberId: member.id }), reasons[l.id], l.id, l.text)}>Zuweisen</Button>
               </div>
               <div className="rounded-lg bg-white/70"><DepositSplit memberId={member.id} balance={balance} amount={l.amount} reason={reasons[l.id]} onReason={(r) => setReasons({ ...reasons, [l.id]: r })} /></div>
             </div>
@@ -454,7 +460,7 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
       <div className="divide-y divide-line rounded-xl border border-line">
         {paging.rows.map((e, k) => { const i = paging.start + k; const d = docOfEntry(member.id, e, money.docs); const mm = e.date.slice(3, 5); return (
           <div key={i} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-            <span className={clsx(e.reversed && 'text-muted line-through')}><span className="text-muted">{e.date}</span> {e.text}{e.storno && <Badge>Storno</Badge>}{e.receiptId && <ReceiptLink ledger={ledger} id={e.receiptId} />}<SourceLink e={e} ledger={ledger} />
+            <span className={clsx(e.reversed && 'text-muted line-through')}><span className="text-muted">{e.date}</span> {e.text}{e.storno && <Badge>Storno</Badge>}{provisional(e.text) && <Provisional className="ml-1.5" />}{e.receiptId && <ReceiptLink ledger={ledger} id={e.receiptId} />}<SourceLink e={e} ledger={ledger} />
               {d && <DocChip label={`${DOC_TITLE[d.kind]} ${d.no}`} onOpen={() => setDoc(d)} />}
               {(() => { const z = isCharge(e) ? interimOf(member.id, e, money) : undefined; return z && <DocChip label={`Zwischenrechnung ${z.no}`} onOpen={() => setInterim(z)} /> })()}
               {isCharge(e) && !e.storno && !interimOf(member.id, e, money) && <DocChip tone={ledger.statements[`2026-${mm}`]?.state === 'versendet' ? 'ok' : 'muted'} label={`Monatsrechnung ${invoiceNo(member, mm)}`} onOpen={() => { setStmtMonth(mm); setStmt(true) }} />}</span>
@@ -469,6 +475,7 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
       <StatementDrawer memberId={stmt ? member.id : null} month={stmtMonth} onClose={() => setStmt(false)} />
       <MoneyDocDrawer doc={doc} onClose={() => setDoc(null)} />
       <InterimDrawer interim={interim} onClose={() => setInterim(null)} />
+      {cf.dialog}
       <ReminderDrawer ids={remind ? [member.id] : null} ledger={ledger} onClose={() => setRemind(false)} onSent={() => undefined} />
     </section>
   )

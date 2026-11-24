@@ -6,12 +6,49 @@ import { TODAY_ISO, useApp } from '../../state'
 import { Badge, Button, ConfirmDelete, Drawer, Row, Section, Switch } from '../../ui'
 import { dmy } from '../manifest/data'
 import { pdfTemplates } from '../store/data'
-import { KIND_NAME, saveCatalogItem, type CatalogItem, type CatalogKind } from './data'
+import { KIND_NAME, saveCatalogItem, type CatalogItem, type CatalogKind, type FeeKind, type ReviveRule, type ReviveSettings } from './data'
 import { field, Field } from './parts'
 
 const perm = 'vouchers.catalog.manage'
 const num = (v: string) => Number(v.replace(',', '.'))
 const termsText = (i: Pick<CatalogItem, 'validityMonths'>) => (i.validityMonths ? ` · ${i.validityMonths} Monate gültig` : '')
+
+/** A number that is saved when the field is left (one confirmation, not one per key). */
+function NumInput({ label, value, onSave, disabled }: { label: string; value: number; onSave: (n: number) => void; disabled?: boolean }) {
+  const [text, setText] = useState(String(value))
+  const n = Number(text.replace(',', '.'))
+  return <input aria-label={label} inputMode="decimal" disabled={disabled} value={text} onChange={(e) => setText(e.target.value.replace(/[^\d,.]/g, ''))} onBlur={() => (text !== '' && Number.isFinite(n) && n !== value ? onSave(n) : setText(String(value)))} className={`${field} w-20 text-right tabular-nums disabled:opacity-50`} />
+}
+
+/** [Entwurf] Per club: when expired and forfeited vouchers can be reactivated, for which fee and how long they then stay valid. */
+function ReviveSection({ readOnly }: { readOnly: boolean }) {
+  const { revive, setRevive } = useApp()
+  const { guarded } = useSession()
+  const save = (p: Partial<ReviveSettings>) => guarded(perm, () => setRevive({ ...revive, ...p }))
+  const rule = (key: 'expired' | 'noshow', p: Partial<ReviveRule>) => save({ [key]: { ...revive[key], ...p } })
+  const fee = (key: 'expired' | 'noshow', label: string) => (
+    <Row label="Gebühr">
+      <NumInput label={`Gebühr ${label}`} value={revive[key].fee} disabled={readOnly || !revive[key].on} onSave={(n) => rule(key, { fee: n })} />
+      <select aria-label={`Gebührenart ${label}`} disabled={readOnly || !revive[key].on} value={revive[key].feeKind} onChange={(e) => rule(key, { feeKind: e.target.value as FeeKind })} className={`${field} disabled:opacity-50`}>
+        <option value="eur">€</option><option value="pct">% des Werts</option>
+      </select>
+    </Row>
+  )
+  return (
+    <Section title="Gutscheine reaktivieren">
+      <Row label="Abgelaufene Gutscheine reaktivieren"><Switch checked={revive.expired.on} disabled={readOnly} label="Abgelaufene Gutscheine reaktivieren" onChange={(v) => rule('expired', { on: v })} /></Row>
+      {revive.expired.on && (
+        <>
+          <Row label="Bis zu"><NumInput label="Monate nach Ablauf" value={revive.expired.months} disabled={readOnly} onSave={(n) => save({ expired: { ...revive.expired, months: Math.round(n) } })} /><span className="w-40 text-muted">Monate nach Ablauf</span></Row>
+          {fee('expired', 'abgelaufen')}
+        </>
+      )}
+      <Row label="Verfallene Gutscheine reaktivieren (nicht erschienen)"><Switch checked={revive.noshow.on} disabled={readOnly} label="Verfallene Gutscheine reaktivieren" onChange={(v) => rule('noshow', { on: v })} /></Row>
+      {revive.noshow.on && fee('noshow', 'verfallen')}
+      <Row label="Neue Gültigkeit"><NumInput label="Neue Gültigkeit in Monaten" value={revive.validityMonths} disabled={readOnly} onSave={(n) => save({ validityMonths: Math.max(1, Math.round(n)) })} /><span className="w-40 text-muted">Monate ab Reaktivierung</span></Row>
+    </Section>
+  )
+}
 
 /** Which vouchers and tickets exist and what they cost. A price change starts a new version today; sold vouchers and tickets keep theirs. */
 export default function Catalog() {
@@ -36,6 +73,7 @@ export default function Catalog() {
           ))}
         </Section>
       ))}
+      <ReviveSection readOnly={!mayEdit} />
       {editing && (
         <ItemDrawer item={editing} sold={typeof editing === 'string' ? 0 : sold(editing)} readOnly={!mayEdit} onClose={() => setEditing(null)}
           onSave={(n) => { const old = catalog.find((x) => x.id === n.id); const saved = saveCatalogItem(old, n, TODAY_ISO); commit(old ? catalog.map((x) => (x.id === n.id ? saved : x)) : [...catalog, saved]); setEditing(null) }}

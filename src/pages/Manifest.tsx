@@ -1,5 +1,5 @@
 import { ArrowRight, Plane, Users } from 'lucide-react'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { comingFrom } from '../backTo'
 import { useApp } from '../state'
@@ -24,12 +24,15 @@ export default function Manifest() {
   const tab = params.get('tab')
   const view: 'tage' | 'dienstplan' | 'einstellungen' = tab === 'dienstplan' ? 'dienstplan' : mayPrices && tab === 'einstellungen' ? 'einstellungen' : 'tage'
   const [creating, setCreating] = useState(false)
-  const [filter, setFilter] = useState<'kommend' | 'vergangen' | 'alle'>('kommend')
+  const isPast = (d: ManifestDay) => d.status === 'abgeschlossen' || d.status === 'abgesagt'
+  // Nothing coming up: open on the past days, so the page is not empty.
+  const [filter, setFilter] = useState<'kommend' | 'vergangen' | 'alle'>(() => (days.some((d) => !isPast(d)) ? 'kommend' : 'vergangen'))
   const open = (d: ManifestDay) => nav(`/manifest/${d.id}`, comingFrom(FROM))
   const running = days.find((d) => d.status === 'aktiv')
-  const isPast = (d: ManifestDay) => d.status === 'abgeschlossen' || d.status === 'abgesagt'
+  // "Alle": the coming days first, then the past ones, each newest first (a small break between them).
   const list = days.filter((d) => (filter === 'alle' || (filter === 'vergangen' ? isPast(d) : !isPast(d))) && d.id !== (filter === 'kommend' ? running?.id : ''))
-    .sort((a, b) => (filter === 'vergangen' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)))
+    .sort((a, b) => filter === 'kommend' ? a.date.localeCompare(b.date) : Number(isPast(a)) - Number(isPast(b)) || b.date.localeCompare(a.date))
+  const pastStarts = (d: ManifestDay) => { const i = list.indexOf(d); return filter === 'alle' && isPast(d) && i > 0 && !isPast(list[i - 1]) }
   const paging = usePaging(list, filter)
 
   const tandemLine = (d: ManifestDay) => {
@@ -59,7 +62,9 @@ export default function Manifest() {
       <div className="mb-4"><Segmented value={filter} onChange={setFilter} options={[{ value: 'kommend', label: 'Kommende' }, { value: 'vergangen', label: 'Vergangene' }, { value: 'alle', label: 'Alle' }]} /></div>
       <Card className="divide-y divide-line">
         {paging.rows.map((d) => (
-          <div key={d.id} onClick={() => open(d)} className="flex cursor-pointer flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50">
+          <Fragment key={d.id}>
+          {pastStarts(d) && <div className="bg-slate-50 px-5 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted">Vergangene Tage</div>}
+          <div onClick={() => open(d)} className="flex cursor-pointer flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50">
             <div className="min-w-0 flex-1 basis-56">
               <div className="font-medium">{dayName(d.date)}</div>
               <div className="flex flex-wrap items-center gap-x-3 text-sm text-muted">
@@ -78,6 +83,7 @@ export default function Manifest() {
               return <><Badge tone={statusTone[d.status]}>{statusLabel[d.status]}</Badge></>
             })()}
           </div>
+          </Fragment>
         ))}
         {paging.rows.length === 0 && <p className="px-5 py-8 text-center text-sm text-muted">{filter === 'vergangen' ? 'Noch keine vergangenen Tage.' : 'Keine weiteren Tage geplant.'}</p>}
         {paging.bar}

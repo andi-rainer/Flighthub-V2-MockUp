@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { eur } from '../../data'
 import { useSession } from '../../session/session'
 import { TODAY_ISO, useApp } from '../../state'
-import { Badge, Button, Drawer, Segmented } from '../../ui'
+import { Badge, Button, Drawer, Segmented, useConfirm } from '../../ui'
 import { fullName } from '../tickets/data'
 import { NEW_PAY, PaymentFields, payConfirm, payReady, useBookPayment, type PayChoice } from '../tickets/pay'
 import { confirmProof, payTarget } from '../tickets/payments'
@@ -43,6 +43,7 @@ export function GuestPayDrawer({ booking, onClose }: { booking: TandemBooking; o
   const [choice, setChoice] = useState<PayChoice>(NEW_PAY)
   const [checked, setChecked] = useState(false)
   const [note, setNote] = useState('')
+  const ask = useConfirm()
   if (!item || !pay.what || !pay.code) return null
   const guard = (fn: () => void) => guarded('manifest.payments.update', () => { fn(); onClose() })
   const confirm = () => guard(() => {
@@ -50,7 +51,11 @@ export function GuestPayDrawer({ booking, onClose }: { booking: TandemBooking; o
     if (pay.what === 'Gutschein') setVouchers((all) => all.map((v) => (v.code === pay.code ? confirmProof(v, proof, TODAY_ISO) : v)))
     else setTickets((all) => all.map((t) => (t.code === pay.code ? confirmProof(t, proof, TODAY_ISO) : t)))
   })
-  const collect = () => guard(() => book(payTarget(pay.what!, pay.code!, item.buyer), item.price, choice, actor))
+  const doCollect = () => guard(() => book(payTarget(pay.what!, pay.code!, item.buyer), item.price, choice, actor))
+  // [Entwurf] Cash into the Kassa is not easily undone: one confirmation with who and how much.
+  const collect = () => (choice.mode === 'cash'
+    ? ask.ask({ title: 'Bar buchen?', confirm: 'Ja, buchen', lines: [<b className="font-semibold">{guestName(booking)}: {eur(item.price)} bar in die Kassa</b>, `${pay.what} ${pay.code}`], run: doCollect })
+    : doCollect())
 
   return (
     <Drawer open title={`Zahlung · ${guestName(booking)}`} onClose={onClose}>
@@ -76,6 +81,7 @@ export function GuestPayDrawer({ booking, onClose }: { booking: TandemBooking; o
           </div>
         )}
       </div>
+      {ask.dialog}
     </Drawer>
   )
 }

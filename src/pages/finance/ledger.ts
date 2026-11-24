@@ -3,7 +3,7 @@ import {
   AUSLAGE_ID, bankLines, CASH_ID, eur, historyDone, historyLines, historyReceipts, incomeDone, incomeLines, initialCategories, initialCostCenters, initialMoneyAccounts, initialReceipts, initialReleased, members,
   type BankLine, type Category, type CostCenter, type MoneyAccount, type Receipt, type Released, type SingleTarget, type Split, type Target,
 } from '../../data'
-import { countedSum, seedCounts, type CashCount, type DayReport, type DayReportLine } from './cashDocs'
+import { countedSum, seedCounts, type CashCount, type DayReport, type DayCashLine, type DayReportLine, type NotFlownLine } from './cashDocs'
 
 /** A voucher or ticket was paid (amount > 0) or refunded (amount < 0): by a bank line that was assigned, or by cash. */
 export interface PaymentEvent { code: string; amount: number; method: 'cash' | 'bank'; /** "dd.MM." */ date: string; lineId: string; by: string }
@@ -129,7 +129,7 @@ export interface Ledger {
    * Closes a Sprungtag: charges the Betriebskonten, credits the cash received, books the cash of the day as ONE Kassa line split on the members
    * and links the report to it as its receipt. Guests who paid by ticket are booked one by one before (`bookCash`).
    */
-  closeDay: (c: { dayId: string; date: string; aircraft: string; flights: number; jumps: number; lines: DayReportLine[]; by: string; /** [Entwurf] "17:42" */ time?: string; /** [Entwurf] Kassa before the closing. */ cashBefore?: number }) => DayReport
+  closeDay: (c: { dayId: string; date: string; aircraft: string; flights: number; jumps: number; lines: DayReportLine[]; by: string; /** [Entwurf] "17:42" */ time?: string; /** [Entwurf] Kassa before the closing. */ cashBefore?: number; /** [Entwurf] Tandem guests who did not fly. */ notFlown?: NotFlownLine[]; /** [Entwurf] Members were already settled one by one during the day (charge and own Kassa booking): nothing is booked for them here. */ settled?: boolean; /** [Entwurf] The Kassa bookings of the day, for the report. */ cashBookings?: DayCashLine[] }) => DayReport
   /** [Entwurf] Cash counts (Zählprotokolle), newest first. */
   counts: CashCount[]
   /** Counts a cash account: Soll is the balance in the books, Ist the pieces; a difference becomes a marked booking (exception with reason, person, day). */
@@ -139,7 +139,8 @@ export interface Ledger {
   release: (month: string, by: string) => void
   reopen: (month: string, by: string) => void
   /** `date` is the day the money came in (ISO), it may be days before the booking. Default: today. */
-  cashDeposit: (memberId: string, amount: number, text?: string, date?: string) => void
+  /** Returns the id of the Kassa booking. */
+  cashDeposit: (memberId: string, amount: number, text?: string, date?: string) => string
   /** [Entwurf] Credit paid back to a member (Guthaben auszahlen): an outgoing line on the bank or the Kassa, booked on the Betriebskonto. Returns the id of the line. */
   payout: (p: { memberId: string; amount: number; accountId: string; text: string; date?: string }) => string
   accountRules: AccountRules
@@ -155,7 +156,8 @@ export interface Ledger {
   feePayments: Record<string, FeePayment>
   /** A membership fee is paid: cash is booked in the Kassa, a transfer is a bank line assigned to the fee; both are booked as income at once. */
   payFee: (p: { feeId: string; person: string; invoice?: string; amount: number; method: 'bar' | 'bank'; lineId?: string; dateIso: string }) => void
-  charge: (memberId: string, amount: number, text: string) => void
+  /** `source`: where the charge comes from (default: a flight). */
+  charge: (memberId: string, amount: number, text: string, source?: EntrySource['kind']) => void
   /** A counter booking. A cash deposit reverses its Kassa booking, a transfer goes back to the open bank lines. */
   storno: (memberId: string, index: number, reason?: string) => void
   /** Cash that came in (amount > 0) or went out for a voucher or ticket: a cash posting with its date, the cash box moves. */
@@ -314,7 +316,7 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
     closeDay: (c) => {
       const date = postingDate(c.date), dm = dmOf(c.date)
       const round = (n: number) => Math.round(n * 100) / 100
-      const cashParts = c.lines.filter((l) => !l.ownLine && l.cash > 0)
+      const cashParts = c.lines.filter((l) => !l.ownLine && l.cash > 0 && !(c.settled && l.memberId))
       const total = round(cashParts.reduce((n, l) => n + l.cash, 0))
       const id = newId('ta'), number = `TA-${c.date}`
       let cashLineId: string | undefined, receiptId: string | undefined
@@ -325,13 +327,13 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
         setReceipts((rs) => [{ id: receiptId!, name: `Tagesabschluss-${c.date}.pdf`, supplier: `Sprungtag ${dm}`, number, amount: total, date: c.date, source: 'Kassa', note: 'Tagesabschluss-Beleg', lineId: cashLineId }, ...rs])
       }
       for (const l of c.lines) {
-        if (!l.memberId) continue
+        if (!l.memberId || c.settled) continue
         const m = l.memberId
         setBalances((b) => ({ ...b, [m]: (b[m] ?? 0) - l.price + l.cash }))
         addHistory(m, { date: dm, text: `Sprungtag ${dm}: ${l.what}`, amount: -l.price, source: { kind: 'sprungtag' } })
         if (l.cash > 0) addHistory(m, { date: dm, text: `Einzahlung bar (Sprungtag ${dm})`, amount: l.cash, source: { kind: 'kassa', lineId: cashLineId } })
       }
-      const report: DayReport = { id, number, dayId: c.dayId, date: c.date, aircraft: c.aircraft, flights: c.flights, jumps: c.jumps, by: c.by, at: TODAY, time: c.time, cashBefore: c.cashBefore, lines: c.lines, cashLineId, receiptId }
+      const report: DayReport = { id, number, dayId: c.dayId, date: c.date, aircraft: c.aircraft, flights: c.flights, jumps: c.jumps, by: c.by, at: TODAY, time: c.time, cashBefore: c.cashBefore, lines: c.lines, notFlown: c.notFlown, settled: c.settled, cashBookings: c.cashBookings && cashLineId ? [...c.cashBookings, { time: c.time, who: `Tageskasse Tandem-Gäste`, amount: total, lineId: cashLineId }] : c.cashBookings, cashLineId, receiptId }
       setDayReports((r) => [report, ...r])
       say(total > 0 ? `Tag abgeschlossen: ${eur(total)} in die Kassa gebucht, Tagesabschluss-Beleg ${number}` : `Tag abgeschlossen, Tagesabschluss-Beleg ${number}`)
       return report
@@ -429,10 +431,11 @@ export function useLedger(onPayment?: (e: PaymentEvent) => void): Ledger {
       const lineId = post({ date: when, text: `${booking}: ${members.find((m) => m.id === memberId)?.name}`, amount, accountId: CASH_ID, needsReceipt: false }, { kind: 'konto', memberId })
       addHistory(memberId, { date: dmOf(when), text: booking, amount, source: { kind: 'kassa', lineId } })
       say(`Bar eingezahlt${when === TODAY ? '' : ` (${dmOf(when)})`}: ${eur(amount)} auf Betriebskonto ${members.find((m) => m.id === memberId)?.name}`)
+      return lineId
     },
-    charge: (memberId, amount, text) => {
+    charge: (memberId, amount, text, source = 'flug') => {
       setBalances((b) => ({ ...b, [memberId]: (b[memberId] ?? 0) - amount }))
-      addHistory(memberId, { date: dmOf(TODAY), text, amount: -amount, source: { kind: 'flug' } })
+      addHistory(memberId, { date: dmOf(TODAY), text, amount: -amount, source: { kind: source } })
     },
     storno: (memberId, index, reason) => {
       const e = history[memberId]?.[index]

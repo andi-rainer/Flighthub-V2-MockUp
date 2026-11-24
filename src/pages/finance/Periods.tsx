@@ -4,7 +4,7 @@ import { useState, type ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AUSLAGE_ID, eur, members, type BankLine, type MoneyAccount } from '../../data'
 import { useSession } from '../../session/session'
-import { ActionPanel, Badge, Banner, Button, Card, Drawer, field, Segmented, usePaging } from '../../ui'
+import { ActionPanel, Badge, Banner, Button, Card, Drawer, field, Segmented, useConfirm, usePaging } from '../../ui'
 import { TODAY_ISO, useApp } from '../../state'
 import { dmy } from '../manifest/data'
 import { useActor } from '../tickets/parts'
@@ -229,6 +229,7 @@ function ReconRow({ account: a, month, ledger, locked }: { account: MoneyAccount
   const { guarded } = useSession()
   const actor = useActor()
   const x = useExtras()
+  const cf = useConfirm()
   const done = x.reconOf(month, a.id)
   const soll = balanceAt(ledger, a.id, monthEnd(month))
   // The statement of a synced bank account brings its closing balance; cash and savings books are entered.
@@ -255,7 +256,7 @@ function ReconRow({ account: a, month, ledger, locked }: { account: MoneyAccount
             </label>
             {a.kind === 'bar' && <button onClick={() => setCount(count ? null : {})} className="text-xs text-brand hover:underline">{count ? 'Betrag' : 'Zählen'}</button>}
             <span className={clsx('w-20 text-right text-xs tabular-nums', !has ? 'text-muted' : diff === 0 ? 'text-ok' : 'font-medium text-bad')}>{has ? (diff === 0 ? 'stimmt' : eur(diff)) : ''}</span>
-            {has && diff !== 0 ? <Button disabled={!may} onClick={book}>Differenz buchen</Button> : <Button variant="primary" disabled={!may || !has} onClick={confirm}>Bestätigen</Button>}
+            {has && diff !== 0 ? <Button disabled={!may} onClick={() => cf.ask({ title: 'Differenz buchen?', lines: [`${a.name}: Soll ${eur(soll)}, Ist ${eur(value)}`, `Eine Buchung über ${eur(diff)} zum ${dmy(monthEnd(month))} wird angelegt.`], confirm: `${eur(diff)} buchen`, run: book })}>Differenz buchen</Button> : <Button variant="primary" disabled={!may || !has} onClick={confirm}>Bestätigen</Button>}
           </>
         )}
       </div>
@@ -269,6 +270,7 @@ function ReconRow({ account: a, month, ledger, locked }: { account: MoneyAccount
           ))}
         </div>
       )}
+      {cf.dialog}
     </div>
   )
 }

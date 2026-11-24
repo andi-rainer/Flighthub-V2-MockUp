@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Check, ChevronLeft, ExternalLink, FileText, UserCheck, UserPlus } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, ExternalLink, FileText, UserCheck, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useBack } from '../../backTo'
@@ -24,7 +24,10 @@ import { docIssue } from '../members/memberDocs'
 import KioskDrawer from './KioskDrawer'
 import { slots } from './slots'
 import SportCheckIn from './SportCheckIn'
-import { MasterPick, masterShort } from './TandemMaster'
+import { DepositSheet, SettleSheet } from './Settle'
+import { useSettleStore, type Settlement } from './settleStore'
+import { masterShort } from './TandemMaster'
+import PersonPanel from './PersonPanel'
 import { GuestPayDrawer, PayBadge, useGuestPay } from './GuestPayment'
 
 const statusTone: Record<DayStatus, 'ok' | 'info' | 'neutral' | 'bad'> = { aktiv: 'ok', geplant: 'info', abgeschlossen: 'neutral', abgesagt: 'bad' }
@@ -41,7 +44,7 @@ export default function DayBoard() {
 }
 
 function Board({ day }: { day: ManifestDay }) {
-  const { loads, setLoads, setDays, bookings, setBookings, checkedIn, toggleCheckIn, weights, can, reservations, setReservations, settings, memberCan, docsOf, ledger } = useApp()
+  const { loads, setLoads, setDays, bookings, checkedIn, weights, can, reservations, setReservations, settings, memberCan, docsOf, ledger } = useApp()
   const nav = useNavigate()
   const { label, back } = useBack({ label: 'Manifest', to: '/manifest' })
   const [params, setParams] = useSearchParams()
@@ -50,9 +53,10 @@ function Board({ day }: { day: ManifestDay }) {
   const [dragging, setDragging] = useState<string[]>([])
   const [bulkPilot, setBulkPilot] = useState('')
   const [docsFor, setDocsFor] = useState<string | null>(null)
-  const [masterFor, setMasterFor] = useState<string | null>(null)
   const [payFor, setPayFor] = useState<string | null>(null)
   const [ticketFor, setTicketFor] = useState<string | null>(null)
+  // [Entwurf] The side panel of one person in Wartend / Schon eingeplant / In der Luft / Erwartet: all options in one place.
+  const [panelFor, setPanelFor] = useState<string | null>(null)
   const guestPay = useGuestPay()
   // [Entwurf] The closing of the day and its check; `?pruefen=1` (task on the dashboard) opens the Tagesabschluss at once.
   const closing = useDayCheck().current(ledger.dayReports, day.id)
@@ -129,16 +133,12 @@ function Board({ day }: { day: ManifestDay }) {
   // A new flight starts with the pilot of the flight before it.
   const addFlights = (times: string[], pilotId?: string) => setLoads((ls) => { let id = Math.max(0, ...ls.map((l) => l.id)); return [...ls, ...times.map((time): Load => ({ id: ++id, dayId: day.id, time, status: 'geplant', pilotId, jumpers: [] }))] })
   const setStatus = (status: DayStatus, extra: Partial<ManifestDay> = {}) => setDays((all) => all.map((d) => (d.id === day.id ? { ...d, status, ...extra } : d)))
-  const discard = (id: string) => {
-    setLoads((ls) => ls.map((l) => (l.dayId !== day.id || l.status === 'gelandet' ? l : { ...l, jumpers: l.jumpers.filter((j) => j.id !== id) })))
-    if (id.startsWith('s-')) toggleCheckIn(id.slice(2), false)
-    else setBookings((all) => all.map((b) => (`t-${b.id}` === id ? { ...b, state: 'nicht_erschienen' } : b)))
-  }
-  // A sport jumper who goes home leaves the waiting list and the flights that have not started. Flights already flown keep him for the charge.
-  const leave = (memberId: string) => {
-    toggleCheckIn(memberId, false)
-    setLoads((ls) => ls.map((l) => (l.dayId === day.id && l.status === 'geplant' ? { ...l, jumpers: l.jumpers.filter((j) => j.id !== `s-${memberId}`) } : l)))
-  }
+  // [Entwurf] A sport jumper who goes home is settled first ("Abrechnen und auschecken"): today's open jumps are charged, cash is booked in the
+  // Kassa at once. Then he leaves the waiting list and the flights that have not started.
+  const [settleFor, setSettleFor] = useState<{ id: string; checkout: boolean; extrasOnly?: boolean; fix?: Settlement } | null>(null)
+  const [depositFor, setDepositFor] = useState<string | null>(null)
+  const settleStore = useSettleStore()
+  const leave = (memberId: string) => setSettleFor({ id: memberId, checkout: true })
   const cancelDay = (reason: string) => {
     setStatus('abgesagt', { cancelReason: reason })
     const f = toAbs(day.date, day.from), t = toAbs(day.date, day.to)
@@ -153,9 +153,7 @@ function Board({ day }: { day: ManifestDay }) {
         day={day}
         flights={landed.length}
         jumped={perPerson(landed.flatMap((l) => l.jumpers), sportPrice)}
-        notFlown={[...present.filter((j) => j.kind === 'tandem' || flown(j.id) === 0), ...expected.map(tandemJumper), ...dayLoads.filter((l) => l.status !== 'gelandet').flatMap((l) => l.jumpers.filter((j) => !j.noShow))].filter((j, i, all) => all.findIndex((x) => x.id === j.id) === i)}
         onBack={() => setMode('betrieb')}
-        onDiscard={discard}
         onBooked={() => setStatus('abgeschlossen', { done: { flights: landed.length, jumps: landed.reduce((n, l) => n + l.jumpers.filter((j) => !j.noShow).length, 0) } })}
       />
     )
@@ -168,33 +166,30 @@ function Board({ day }: { day: ManifestDay }) {
     const w = day.windows.find((x) => x.id === b?.windowId)
     const issue = m ? docIssue(docsOf(m.id)) : null
     const pay = b ? guestPay.of(b) : undefined
-    // The menu sits inside the tile, so every tile has the same width.
-    const menu = j.memberId ? [...(issue || can('documents.view.all') ? [{ label: issue ? 'Dokumente prüfen' : 'Dokumente', onSelect: () => setDocsFor(j.memberId!) }] : []), ...(running && mayCheckInOthers ? [{ label: 'Check-out', onSelect: () => leave(j.memberId!) }] : [])] : []
+    const sub = [j.weight ? `${j.weight} kg` : 'Gewicht fehlt', w ? windowLabel(w) : '', j.kind === 'sport' && flown(j.id) > 0 ? `${flown(j.id)}× gesprungen` : '', tag ?? ''].filter(Boolean).join(' · ')
     return (
       <div key={j.id} draggable={mayAssign} onDragStart={(e) => { e.dataTransfer.setData('text/plain', j.id); e.dataTransfer.effectAllowed = 'move'; setDragging(on ? selected : [j.id]) }} onDragEnd={() => setDragging([])}
-        className={clsx('flex min-h-14 min-w-0 items-center rounded-xl border transition', on ? 'border-brand bg-brand-soft' : 'border-line bg-surface hover:bg-slate-50', dim && !on && 'border-dashed')}>
-        <button onClick={() => mayAssign && toggle(j.id)} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl pl-4 pr-2 text-left">
-          <span className={clsx('grid h-6 w-6 shrink-0 place-items-center rounded-full border', on ? 'border-brand bg-brand text-white' : 'border-slate-300')}>{on && <Check size={14} />}</span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-medium">{j.name}</span>
-            <span className="text-xs text-muted">{j.weight ? `${j.weight} kg` : 'Gewicht fehlt'}{w ? ` · ${windowLabel(w)}` : ''}{j.kind === 'sport' && flown(j.id) > 0 ? ` · ${flown(j.id)}× gesprungen` : ''}{tag ? ` · ${tag}` : ''}</span>
-            {pay?.code && <span className="block text-xs text-muted"><span className="font-mono">{pay.code}</span>{pay.state === 'bezahlt' && <span className="text-ok"> · bezahlt</span>}{pay.state === 'vor_ort' && ' · zahlt vor Ort'}</span>}
-          </span>
-        </button>
-        {j.kind === 'tandem' && (
-          <span className="mr-1 flex shrink-0 flex-col items-end gap-1">
-            <Badge tone="info">Tandem · 2</Badge>
-            {pay && (pay.state === 'offen' || pay.state === 'nachweis') && <PayBadge short pay={pay} name={j.name} onOpen={guestPay.mayClear ? () => setPayFor(b!.id) : undefined} />}
-            {b && pay && pay.state === 'vor_ort' && !pay.item && (guestPay.mayClear
-              ? <button onClick={() => setTicketFor(b.id)} title="Ticket anlegen" aria-label={`Ticket für ${j.name} anlegen`} className="rounded-full"><Badge tone="warn">Kein Ticket</Badge></button>
-              : <Badge tone="warn">Kein Ticket</Badge>)}
-            {b && (mayAssign
-              ? <button onClick={() => setMasterFor(b.id)} title="Tandemmaster wählen" aria-label={`Tandemmaster von ${j.name} wählen`} className="rounded-full"><Badge tone={b.masterId ? 'neutral' : 'warn'}>{b.masterId ? masterShort(b.masterId) : 'Master fehlt'}</Badge></button>
-              : b.masterId && <Badge>{masterShort(b.masterId)}</Badge>)}
-          </span>
+        className={clsx('flex min-h-16 min-w-0 items-stretch rounded-xl border transition', on ? 'border-brand bg-brand-soft' : 'border-line bg-surface', dim && !on && 'border-dashed')}>
+        {mayAssign && (
+          <button onClick={() => toggle(j.id)} aria-pressed={on} aria-label={`${j.name} auswählen`} className="grid w-14 shrink-0 place-items-center rounded-l-xl hover:bg-slate-50">
+            <span className={clsx('grid h-7 w-7 place-items-center rounded-full border-2', on ? 'border-brand bg-brand text-white' : 'border-slate-300')}>{on && <Check size={15} />}</span>
+          </button>
         )}
-        {issue && <button onClick={() => setDocsFor(j.memberId!)} title={`${issue.label}: Dokumente öffnen`} aria-label={`Dokumente von ${j.name} öffnen`} className="mr-1 shrink-0 rounded-full"><Badge tone={issue.tone}>Dokument</Badge></button>}
-        {menu.length > 0 ? <div className="pr-1"><RowMenu actions={menu} /></div> : <span className="w-2 shrink-0" />}
+        <button onClick={() => setPanelFor(j.id)} aria-label={`${j.name} öffnen`} className={clsx('flex min-w-0 flex-1 items-center gap-2 rounded-r-xl py-2 pr-2 text-left hover:bg-slate-50', !mayAssign && 'rounded-l-xl pl-4')}>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-base font-medium">{j.name}</span>
+            <span className="block text-sm text-muted">{sub}</span>
+            {pay?.code && <span className="block truncate text-sm text-muted"><span className="font-mono">{pay.code}</span>{pay.state === 'bezahlt' && <span className="text-ok"> · bezahlt</span>}{pay.state === 'vor_ort' && ' · zahlt vor Ort'}</span>}
+            <span className="mt-1 flex flex-wrap gap-1 empty:hidden">
+            {j.kind === 'tandem' && <Badge tone="info">Tandem · 2</Badge>}
+            {pay && (pay.state === 'offen' || pay.state === 'nachweis') && <PayBadge short pay={pay} name={j.name} />}
+            {b && pay && pay.state === 'vor_ort' && !pay.item && <Badge tone="warn">Kein Ticket</Badge>}
+            {b && <Badge tone={b.masterId ? 'neutral' : 'warn'}>{b.masterId ? masterShort(b.masterId) : 'Master fehlt'}</Badge>}
+            {issue && <Badge tone={issue.tone}>Dokument</Badge>}
+            </span>
+          </span>
+          <ChevronRight size={22} className="shrink-0 text-muted" />
+        </button>
       </div>
     )
   }
@@ -312,11 +307,10 @@ function Board({ day }: { day: ManifestDay }) {
         </div>
       )}
 
-      <Drawer open={!!masterFor} title={`Tandemmaster · ${(() => { const b = bookings.find((x) => x.id === masterFor); return b ? fullName(b) : '' })()}`} onClose={() => setMasterFor(null)}>
-        {masterFor && bookings.find((x) => x.id === masterFor) && (
-          <MasterPick booking={bookings.find((x) => x.id === masterFor)!} onPicked={() => setMasterFor(null)} />
-        )}
-      </Drawer>
+      {panelFor && (() => { const pj = everyone.find((x) => x.id === panelFor); return pj && (
+        <PersonPanel day={day} jumper={pj} capacity={capacity} onClose={() => setPanelFor(null)} onPlace={(loadId) => place(loadId, [pj.id])}
+          onDocs={setDocsFor} onDeposit={setDepositFor} onCheckout={(id) => { setPanelFor(null); leave(id) }} onExtras={(id) => setSettleFor({ id, checkout: false, extrasOnly: true })} onCorrect={(id) => { const st = settleStore.of(day.id).filter((x) => x.memberId === id && (x.loadIds.length > 0 || x.extras.length > 0)).pop(); if (st) { setPanelFor(null); setSettleFor({ id, checkout: false, fix: st }) } }} onPay={setPayFor} onTicket={setTicketFor} />
+      ) })()}
       {reportOpen && closing && <DayReportDrawer report={closing.report} onClose={() => { setReportOpen(false); if (params.get('pruefen')) setParams({}, { replace: true }) }} />}
       {ticketFor && bookings.find((x) => x.id === ticketFor) && <QuickTicket booking={bookings.find((x) => x.id === ticketFor)!} onClose={() => setTicketFor(null)} />}
       {payFor && bookings.find((x) => x.id === payFor) && <GuestPayDrawer booking={bookings.find((x) => x.id === payFor)!} onClose={() => setPayFor(null)} />}
@@ -338,6 +332,8 @@ function Board({ day }: { day: ManifestDay }) {
         </div>
       </Drawer>
       <Drawer open={dialog === 'cancel'} title="Tag absagen" onClose={() => setDialog(null)}><CancelDay count={mine.length} onCancel={cancelDay} /></Drawer>
+      {settleFor && <SettleSheet day={day} memberId={settleFor.id} checkout={settleFor.checkout} extrasOnly={settleFor.extrasOnly} fix={settleFor.fix} onClose={() => setSettleFor(null)} />}
+      {depositFor && <DepositSheet day={day} memberId={depositFor} onClose={() => setDepositFor(null)} />}
     </>
   )
 }

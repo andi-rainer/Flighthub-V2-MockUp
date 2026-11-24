@@ -2,7 +2,7 @@ import { ArrowLeftRight, Download, Lock, Wand2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { eur, type BankLine, type Receipt, type Split } from '../../data'
 import { useSession } from '../../session/session'
-import { Badge, Banner, Button, Drawer } from '../../ui'
+import { Badge, Banner, Button, Drawer, useConfirm } from '../../ui'
 import { dmy } from '../manifest/data'
 import { Field, field, useActor } from '../tickets/parts'
 import { Assign, SplitsEditor } from './Assign'
@@ -129,6 +129,7 @@ function LineDrawer({ line, ledger, show, onClose }: { line: BankLine; ledger: L
 
 /** An invoice: its data and file, where it is coded, and the booking that paid it (or the wait for it). */
 function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt; ledger: Ledger; show: (v: View) => void; onClose: () => void }) {
+  const cf = useConfirm()
   const [picking, setPicking] = useState(false)
   const [expense, setExpense] = useState(false)
   const dayReport = r.source === 'Kassa' ? ledger.dayReports.find((d) => d.receiptId === r.id) : undefined
@@ -185,7 +186,7 @@ function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt
                 <div className="flex items-center gap-2"><Badge tone="warn">Abbuchung offen</Badge>{r.suggestion && <span className="flex items-center gap-1.5 text-xs text-muted"><Dot c={r.suggestion.confidence} />{confLabel(r.suggestion.confidence)} · {r.suggestion.why}</span>}</div>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="primary" onClick={() => setPicking(true)}>{r.suggestion ? 'Bestätigen' : 'Zuordnen'}</Button>
-                  {!r.suggestion && r.amount > 0 && <Button onClick={() => { ledger.createCashLine(r.id); onClose() }}>Bar bezahlt (Kassa)</Button>}
+                  {!r.suggestion && r.amount > 0 && <Button onClick={() => cf.ask({ title: 'Bar aus der Kassa bezahlt?', lines: [`${r.supplier}${r.number ? ` · ${r.number}` : ''}: ${eur(r.amount)}`, 'Die Kassa wird um den Betrag weniger.'], confirm: `${eur(r.amount)} buchen`, run: () => { ledger.createCashLine(r.id); onClose() } })}>Bar bezahlt (Kassa)</Button>}
                   <Button onClick={() => setExpense(true)}>Privat bezahlt (Auslage)</Button>
                 </div>
               </div>
@@ -193,6 +194,7 @@ function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt
           </div>
         </div>
       </Drawer>
+      {cf.dialog}
       <LinePicker receipt={picking ? r : null} ledger={ledger} onClose={() => setPicking(false)} />
       {expense && <ExpenseDrawer ledger={ledger} from={r} onClose={() => setExpense(false)} />}
       {report && dayReport && <DayReportDrawer report={dayReport} onClose={() => setReport(false)} />}

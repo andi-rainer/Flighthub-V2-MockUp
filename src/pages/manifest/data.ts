@@ -37,13 +37,33 @@ export interface DutyShift { memberId: string; from: number; to: number }
 /** Settings of the manifest, per club: prices, the usual gap between flights, the usual operating hours and the duties of a day. */
 /** An earlier price of a sport jump with the days it applied (ISO). `until` is the day the next price started. */
 export interface PriceVersion { price: number; since: string; until: string }
-export interface ManifestSettings { sportPrice: number; /** First day of the current price (ISO). */ sportPriceSince: string; /** Earlier prices, newest first. Archived, never edited. */ sportPriceHistory: PriceVersion[]; loadGap: number; /** Usual flight time of a jump flight in minutes (cycle time), the default of the AFP. */ cycleMin: number; from: string; to: string; roles: DutyRole[] }
+export interface ManifestSettings { sportPrice: number; /** First day of the current price (ISO). */ sportPriceSince: string; /** Earlier prices, newest first. Archived, never edited. */ sportPriceHistory: PriceVersion[]; loadGap: number; /** Usual flight time of a jump flight in minutes (cycle time), the default of the AFP. */ cycleMin: number; from: string; to: string; roles: DutyRole[]; /** [Entwurf] Zusatzkosten a member can be charged at the manifest, with default prices. */ extras?: ExtraCost[] }
+/**
+ * [Entwurf] One item of the Zusatzkosten list (Leihgebühr Rig, Packen ...), defined per club in Manifest > Einstellungen. The list order is the
+ * order at the manifest. Prices change over time: each price holds from its day on, earlier settlements keep the price they were booked with.
+ * Archived: no longer offered, past bookings keep their text and price.
+ */
+export interface ExtraCost { id: string; name: string; /** Oldest first; each holds from `since` (ISO) on. */ prices: ExtraPrice[]; archived?: boolean }
+export interface ExtraPrice { price: number; since: string }
+export const DEFAULT_EXTRAS: ExtraCost[] = [
+  { id: 'x-rig', name: 'Leihgebühr Rig', prices: [{ price: 12, since: '2025-01-01' }, { price: 15, since: '2026-01-01' }] },
+  { id: 'x-pack', name: 'Packen', prices: [{ price: 8, since: '2025-01-01' }] },
+  { id: 'x-rigging', name: 'Rigging', prices: [{ price: 25, since: '2025-01-01' }] },
+  { id: 'x-spesen', name: 'Spesen', prices: [{ price: 10, since: '2025-01-01' }], archived: true },
+]
+/** The price of a Zusatzkosten item on a day (ISO). */
+export const extraPriceOn = (x: ExtraCost, iso: string) => [...x.prices].reverse().find((p) => p.since <= iso)?.price ?? x.prices[0]?.price ?? 0
+/** A new price from `since` on: prices from that day on are replaced, earlier ones stay. */
+export const withExtraPrice = (x: ExtraCost, price: number, since: string): ExtraCost =>
+  ({ ...x, prices: [...x.prices.filter((p) => p.since < since), { price, since }] })
+
 export const DEFAULT_SETTINGS: ManifestSettings = {
   sportPrice: 40, sportPriceSince: '2026-01-01', sportPriceHistory: [{ price: 35, since: '2025-01-01', until: '2026-01-01' }], loadGap: 45, cycleMin: 30, from: '09:00', to: '17:00',
   roles: [
     { id: 'r-coord', name: 'Manifest-Koordinator', required: true, min: 1, functions: ['manifest_coordinator'] },
     { id: 'r-shuttle', name: 'Shuttlebusfahrer', required: false, min: 1, functions: [] },
   ],
+  extras: DEFAULT_EXTRAS,
 }
 
 /** Whole hours the day runs: 09:00 to 16:30 gives 9 to 17. */
@@ -106,7 +126,8 @@ export interface TandemBooking {
   id: string; dayId: string; windowId?: string
   first: string; last: string; weight?: number; email?: string; phone?: string
   source: BookingSource; voucher?: string; paidOnline: boolean; price: number
-  state: 'gebucht' | 'storniert' | 'nicht_erschienen'
+  /** [Entwurf] `verschoben`: did not fly, released from the day at the closing; ticket or voucher stays valid, the new date is still open. */
+  state: 'gebucht' | 'storniert' | 'nicht_erschienen' | 'verschoben'
   /** The tandem master who flies the guest. Set before or on the flight, read from here everywhere (single source of truth). */
   masterId?: string
   checkin?: Checkin

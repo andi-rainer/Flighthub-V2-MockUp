@@ -2,7 +2,7 @@ import { Download, FileCheck2, Link2 } from 'lucide-react'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { eur, type BankLine } from '../../data'
-import { Button } from '../../ui'
+import { Button, useConfirm } from '../../ui'
 import { dmy } from '../manifest/data'
 import { type Ledger } from './ledger'
 import { DayReportDrawer } from './DayReport'
@@ -19,6 +19,7 @@ export default function LineReceipts({ line, ledger, locked = false, booked, onI
   /** The booking is booked: only then can an invoice be missing. */ booked: boolean
   onInvoice?: (id: string) => void; onDialog: (open: boolean) => void
 }) {
+  const cf = useConfirm()
   const [sub, setSub] = useState<null | 'pick' | 'create' | 'none' | 'own' | 'sign'>(null)
   const [doc, setDoc] = useState(false)
   const [report, setReport] = useState<string | null>(null)
@@ -53,7 +54,7 @@ export default function LineReceipts({ line, ledger, locked = false, booked, onI
           <div key={r.id} className="flex items-center gap-2 rounded-lg border border-dashed border-brand/50 bg-brand-soft/40 px-3 py-2">
             <div className="min-w-0 flex-1"><span className="block truncate font-medium">{r.supplier}{r.number ? ` · ${r.number}` : ''}</span><span className="text-xs text-muted">Betrag passt · {dmy(r.date)}</span></div>
             <span className="font-medium tabular-nums">{eur(r.amount)}</span>
-            <Button onClick={() => ledger.linkReceipt(r.id, line.id)}>Zuordnen</Button>
+            <Button onClick={() => cf.ask({ title: 'Rechnung zuordnen?', lines: [`${r.supplier}${r.number ? ` · ${r.number}` : ''}: ${eur(r.amount)}`, `zur Buchung „${line.bookingText ?? line.text}“ vom ${dmy(line.date)}`], confirm: 'Zuordnen', run: () => ledger.linkReceipt(r.id, line.id) })}>Zuordnen</Button>
           </div>
         ))}
         {missing && ex && (
@@ -83,6 +84,7 @@ export default function LineReceipts({ line, ledger, locked = false, booked, onI
       {reportOf(report) && <DayReportDrawer report={reportOf(report)!} onClose={() => setReport(null)} />}
       {sub === 'own' && <NoReceiptForm line={line} ledger={ledger} ownOnly onClose={() => show(null)} />}
       {sub === 'sign' && <SecondSignForm line={line} ledger={ledger} onClose={() => show(null)} />}
+      {cf.dialog}
       </>, document.body)}
     </div>
   )

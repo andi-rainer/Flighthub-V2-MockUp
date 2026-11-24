@@ -1,4 +1,4 @@
-import { DEFAULT_CATALOG, seedTickets, seedVouchers, type CatalogItem, type Ticket, type Voucher } from './pages/tickets/data'
+import { DEFAULT_CATALOG, DEFAULT_REVIVE, seedTickets, seedVouchers, type CatalogItem, type ReviveSettings, type Ticket, type Voucher } from './pages/tickets/data'
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
 import { initialCostCenters, members, registerMember, type Jumper, type Member } from './data'
 import { F, FUNCTIONS, permissionsFor, seedGrants, type Assignment, type FunctionDef, type Grants, type Permission } from './permissions'
@@ -30,7 +30,9 @@ export const viewAs = ['m5', 'm8', 'm2', 'm3', 'm1']
 
 // ---------- Loads (shared by Manifest, AFP and Dashboard) ----------
 export type LoadStatus = 'geplant' | 'boarding' | 'in_air' | 'gelandet'
-export interface Load { id: number; dayId: string; time: string; status: LoadStatus; jumpers: Jumper[]; /** Member id of the pilot of this flight. */ pilotId?: string }
+export interface Load { id: number; dayId: string; time: string; status: LoadStatus; jumpers: Jumper[]; /** Member id of the pilot of this flight. */ pilotId?: string; /** [Entwurf] Changes after landing ("Load bearbeiten"): who, when, what. */ log?: LoadLogEntry[] }
+/** [Entwurf] One change of a landed flight. */
+export interface LoadLogEntry { /** ISO */ at: string; time: string; by: string; text: string }
 /** Number of a flight within its day (1, 2, 3 ...), ordered by time. The id is unique over all days and only used internally. */
 export const flightNo = (loads: Load[], l: Load) => loads.filter((x) => x.dayId === l.dayId).sort((a, b) => a.time.localeCompare(b.time) || a.id - b.id).findIndex((x) => x.id === l.id) + 1
 /** The price comes from the manifest settings (per club); the default is only for seed data. */
@@ -183,6 +185,8 @@ interface App {
   /** Voucher and ticket kinds with their versioned prices, and what was sold. */
   catalog: CatalogItem[]; setCatalog: (c: CatalogItem[]) => void
   vouchers: Voucher[]; setVouchers: (fn: (v: Voucher[]) => Voucher[]) => void
+  /** [Entwurf] Club setting: when expired and forfeited vouchers can be reactivated, fee and new validity. */
+  revive: ReviveSettings; setRevive: (s: ReviveSettings) => void
   tickets: Ticket[]; setTickets: (fn: (t: Ticket[]) => Ticket[]) => void
   /** Documents of the members (licence, medical ...) with their state of today; a newer one can be presented and checked. */
   docsOf: (memberId: string) => MemberDocView[]
@@ -257,6 +261,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [bookings, setBookings] = useState<TandemBooking[]>(seedBookings)
   const [catalog, setCatalog] = useState<CatalogItem[]>(DEFAULT_CATALOG)
   const [vouchers, setVouchers] = useState<Voucher[]>(seedVouchers)
+  const [revive, setRevive] = useState<ReviveSettings>(DEFAULT_REVIVE)
   const [tickets, setTickets] = useState<Ticket[]>(seedTickets)
   const [memberDocs, setMemberDocsState] = useState<Record<string, MemberDoc[]>>(seedMemberDocs)
   const [afps, setAfps] = useState<Record<string, AfpResult>>({})
@@ -345,7 +350,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setHistory((h) => [{ id: Date.now() + Math.random(), memberId: m.id, at: NOW_ISO, type: 'Mitgliedschaft', text: `Ohne Formular angelegt: ${t}`, details: profile.email ? [`E-Mail: ${profile.email}`] : undefined, exception: { ...exception, created: true }, by: me.name }, ...h])
       },
       setProfile: (id, p) => setProfiles((all) => ({ ...all, [id]: { ...(all[id] ?? defaultProfile(members.find((m) => m.id === id)?.name ?? '')), ...p } })), ledger,
-      loads, setLoads: (fn) => setLoads(fn), settings, setSettings, days, setDays: (fn) => setDays(fn), bookings, setBookings: (fn) => setBookings(fn), catalog, setCatalog, vouchers, setVouchers: (fn) => setVouchers(fn), tickets, setTickets: (fn) => setTickets(fn),
+      loads, setLoads: (fn) => setLoads(fn), settings, setSettings, days, setDays: (fn) => setDays(fn), bookings, setBookings: (fn) => setBookings(fn), catalog, setCatalog, vouchers, setVouchers: (fn) => setVouchers(fn), revive, setRevive, tickets, setTickets: (fn) => setTickets(fn),
       docsOf: (id) => (memberDocs[id] ?? []).map((d) => ({ ...d, state: docStateOf(d.expires, TODAY_ISO) })),
       setMemberDocs: (id, fn) => setMemberDocsState((all) => ({ ...all, [id]: fn(all[id] ?? []) })),
       afps, setAfp: (r) => setAfps((a) => ({ ...a, [r.key]: r })),

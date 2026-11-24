@@ -181,15 +181,9 @@ export function MoneyDocSheet({ doc }: { doc: MoneyDoc }) {
             {doc.kind === 'auszahlung' && doc.iban && row('Überwiesen auf', doc.iban)}
             {doc.kind === 'auszahlung' && !doc.iban && row('Weg', 'Bar aus der Kassa')}
             {doc.reason && row('Grund', doc.reason)}
-            {doc.over && row('Über der Obergrenze bestätigt', `${doc.over.reason} (${doc.over.by})`)}
+            {doc.over && row('Über der Obergrenze bestätigt', doc.over.reason)}
           </tbody>
         </table>
-        {(doc.kind === 'quittung' || (doc.kind === 'auszahlung' && !doc.iban)) && (
-          <div className="mt-8 grid grid-cols-2 gap-6 text-xs text-muted">
-            <div className="border-t border-line pt-1">{doc.kind === 'quittung' ? `Kassier${doc.by !== 'automatisch' ? `: ${doc.by}` : ''}` : `Erhalten: ${m?.name ?? ''}`}</div>
-            <div className="border-t border-line pt-1">{club.name}</div>
-          </div>
-        )}
         <div className="mt-4 border-t border-line pt-2"><LetterFoot design={branding} /></div>
       </div>
     </PrintFrame>

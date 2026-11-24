@@ -11,13 +11,15 @@ import { DAY_CHECK, checkStateOf, useDayCheck } from '../manifest/dayCheck'
 import { dmy, weekday } from '../manifest/data'
 import LetterHead from '../members/LetterHead'
 import { useActor } from '../tickets/parts'
-import { dayCash, daySummary, HOW_WORDS, jumpsLabel, reportTotals, type DayReport, type DayReportLine } from './cashDocs'
+import { dayCash, daySummary, HOW_WORDS, jumpsLabel, notFlownSentence, reportTotals, type DayReport, type DayReportLine } from './cashDocs'
 
 /** [Entwurf] Members and guests together up to this many rows share one page; more get a page each. */
 const ROWS_ON_ONE_PAGE = 18
 
-const memberHow = (l: DayReportLine) => (l.how === 'bar' ? (l.cash > l.price ? `bar ${eur(l.cash)}` : 'bar') : 'vom Konto')
+const memberHow = (l: DayReportLine) => (l.cash <= 0 ? 'vom Konto' : l.cash === l.price ? 'bar' : `bar ${eur(l.cash)}`)
 const memberWhat = (l: DayReportLine) => (l.jumps !== undefined ? jumpsLabel(l.jumps, l.paidSeats ?? 0) : l.what)
+/** [Entwurf] Zusatzkosten under the jumps: "Leihgebühr Rig 15,00 €". */
+const memberExtras = (l: DayReportLine) => (l.extras ?? []).map((x) => `${x.name} ${eur(x.price)}`)
 const sumOf = (ls: DayReportLine[], v: (l: DayReportLine) => number) => ls.reduce((n, l) => n + v(l), 0)
 
 /**
@@ -30,11 +32,18 @@ export function DayReportSheet({ report: r }: { report: DayReport }) {
   const review = useDayCheck().reviewOf(r.id)
   const s = daySummary(r)
   const cashLine = ledger.lines.find((l) => l.id === r.cashLineId)
-  const split = s.members.length + s.guests.length > ROWS_ON_ONE_PAGE
+  const notFlown = r.notFlown ?? []
+  const cashList = r.cashBookings
+  // [Entwurf] Settled during the day: every cash payment is its own Kassa booking, listed with its time.
+  const cashTotal = cashList ? Math.round(cashList.reduce((n, l) => n + l.amount, 0) * 100) / 100 : s.cash
+  const cashAfter = r.cashBefore === undefined ? s.cashAfter : Math.round((r.cashBefore + cashTotal) * 100) / 100
+  const split = s.members.length + s.guests.length + notFlown.length + (cashList?.length ?? 0) > ROWS_ON_ONE_PAGE
   const pages = split ? 3 : 2
   const closedAt = `${dmy(r.at)}${r.time ? `, ${r.time} Uhr` : ''}`
   const memberLines = s.members.map((m) => m.line)
-  const viaKonto = sumOf(memberLines.filter((l) => l.how !== 'bar'), (l) => l.price)
+  const viaKonto = Math.round(sumOf(memberLines, (l) => Math.max(0, l.price - l.cash)) * 100) / 100
+  const people = new Set(memberLines.map((l) => l.memberId)).size
+  const extrasSum = Math.round(sumOf(memberLines, (l) => (l.extras ?? []).reduce((n, x) => n + x.price, 0)) * 100) / 100
   const ticketCash = reportTotals(r).ticketCash
   const prepaid = sumOf(s.guests.filter((l) => l.how === 'voucher' || l.how === 'online' || l.how === 'ticket'), (l) => l.price)
 
@@ -47,32 +56,34 @@ export function DayReportSheet({ report: r }: { report: DayReport }) {
           : 'Geprüft und festgeschrieben (Kassier oder Obmann)'}</div>
       </div>
       <div className="text-[10px] text-slate-500">
-        {r.cashLineId && cashLine ? `Kassabuchung Tageskasse ${dmy(cashLine.date)}: ${eur(cashLine.amount)} auf ${ledger.accountName(cashLine.accountId)}.` : s.cash > 0 ? '' : 'Kein Bargeld an diesem Tag, keine Kassabuchung.'}
-        {ticketCash > 0 && ` Bar von Tandem-Gästen mit Ticket oder Voucher, am Ticket gebucht: ${eur(ticketCash)}.`}
+        {r.settled ? 'Jede Barzahlung ist eine eigene Kassabuchung (siehe Kassa heute).' : r.cashLineId && cashLine ? `Kassabuchung Tageskasse ${dmy(cashLine.date)}: ${eur(cashLine.amount)} auf ${ledger.accountName(cashLine.accountId)}.` : s.cash > 0 ? '' : 'Kein Bargeld an diesem Tag, keine Kassabuchung.'}
+        {!r.settled && ticketCash > 0 && ` Bar von Tandem-Gästen mit Ticket oder Voucher, am Ticket gebucht: ${eur(ticketCash)}.`}
       </div>
     </div>
   )
 
   const membersTable = (
-    <Block title="Mitglieder" right={`${s.members.length} ${s.members.length === 1 ? 'Person' : 'Personen'}`}>
+    <Block title="Mitglieder" right={`${people} ${people === 1 ? 'Person' : 'Personen'}`}>
       {s.members.length === 0 ? <None>Keine Mitglieder an diesem Tag.</None> : (
         <table className="w-full text-left text-[11px]">
-          <thead><tr className="border-b border-slate-400 text-slate-500"><Th>Name</Th><Th>Sprünge</Th><Th>bezahlt</Th><Th right>Betrag</Th><Th right>Konto vorher → nachher</Th></tr></thead>
+          <thead><tr className="border-b border-slate-400 text-slate-500"><Th>Name</Th><Th>Sprünge</Th><Th>Flüge</Th><Th>bezahlt</Th><Th right>Betrag</Th><Th right>Konto vorher → nachher</Th></tr></thead>
           <tbody>
             {s.members.map(({ line: l, before, after }, i) => (
               <tr key={i} className="break-inside-avoid border-b border-slate-200 align-top">
                 <Td>{l.who}</Td>
-                <Td>{memberWhat(l)}</Td>
-                <Td>{memberHow(l)}</Td>
+                <Td>{memberWhat(l) || (l.extras?.length ? '' : l.what)}{memberExtras(l).map((x) => <div key={x} className="text-slate-600">+ {x}</div>)}</Td>
+                <Td>{l.flight?.replace(/Flug /g, '') ?? '–'}</Td>
+                <Td>{memberHow(l)}{l.time && <span className="text-slate-500"> · {l.time}</span>}{l.fix && <div className="text-amber-800">korrigiert: {l.fix}</div>}</Td>
                 <Td right>{eur(l.price)}</Td>
                 <Td right>{before === undefined || after === undefined ? '–' : <>{eur(before)} → <span className={clsx('font-medium', after < 0 && 'text-red-700')}>{eur(after)}</span></>}</Td>
               </tr>
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t border-slate-400 font-semibold"><Td>Summe</Td><Td /><Td /><Td right>{eur(s.memberTotal)}</Td><Td /></tr>
-            <tr className="text-slate-600"><Td>davon vom Konto</Td><Td /><Td /><Td right>{eur(viaKonto)}</Td><Td /></tr>
-            <tr className="text-slate-600"><Td>bar erhalten</Td><Td /><Td /><Td right>{eur(s.memberCash)}</Td><Td /></tr>
+            <tr className="border-t border-slate-400 font-semibold"><Td>Summe</Td><Td /><Td /><Td /><Td right>{eur(s.memberTotal)}</Td><Td /></tr>
+            <tr className="text-slate-600"><Td>davon vom Konto</Td><Td /><Td /><Td /><Td right>{eur(viaKonto)}</Td><Td /></tr>
+            <tr className="text-slate-600"><Td>bar erhalten</Td><Td /><Td /><Td /><Td right>{eur(s.memberCash)}</Td><Td /></tr>
+            {extrasSum > 0 && <tr className="text-slate-600"><Td>davon Zusatzkosten</Td><Td /><Td /><Td /><Td right>{eur(extrasSum)}</Td><Td /></tr>}
           </tfoot>
         </table>
       )}
@@ -106,6 +117,37 @@ export function DayReportSheet({ report: r }: { report: DayReport }) {
     </Block>
   )
 
+  const notFlownTable = notFlown.length > 0 && (
+    <Block title="Tandem nicht geflogen" right={`${notFlown.length} ${notFlown.length === 1 ? 'Gast' : 'Gäste'}`}>
+      <table className="w-full text-left text-[11px]">
+        <thead><tr className="border-b border-slate-400 text-slate-500"><Th>Name</Th><Th>Code</Th><Th>Ergebnis</Th><Th>Grund</Th><Th>Neuer Termin</Th></tr></thead>
+        <tbody>
+          {notFlown.map((l, i) => (
+            <tr key={i} title={notFlownSentence(l)} className={clsx('break-inside-avoid border-b border-slate-200 align-top', l.outcome === 'nicht_erschienen' && 'bg-slate-50')}>
+              <Td>{l.who}</Td>
+              <Td><span className="font-mono">{l.code ?? '–'}</span></Td>
+              <Td>{l.outcome === 'verschoben' ? `verschoben, ${l.what ?? 'Buchung'} bleibt gültig` : `nicht erschienen, ${l.what ?? 'Buchung'} verfällt${l.what && !l.paid ? ', Zahlung offen' : ''}`}</Td>
+              <Td>{[l.reason, l.kulanz && `Kulanz: ${l.kulanz}`].filter(Boolean).join(' · ') || '–'}</Td>
+              <Td>{l.outcome === 'verschoben' ? l.newDate ?? 'offen' : '–'}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Block>
+  )
+
+  const cashTable = cashList && (
+    <Block title="Kassa heute" right={`${cashList.length} ${cashList.length === 1 ? 'Buchung' : 'Buchungen'} · ${eur(cashTotal)}`}>
+      {cashList.length === 0 ? <None>Kein Bargeld an diesem Tag.</None> : (
+        <table className="w-full text-left text-[11px]">
+          <thead><tr className="border-b border-slate-400 text-slate-500"><Th>Zeit</Th><Th>Buchung</Th><Th>Beleg</Th><Th right>Betrag</Th></tr></thead>
+          <tbody>{cashList.map((l, i) => <tr key={i} className="break-inside-avoid border-b border-slate-200 align-top"><Td>{l.time ?? '–'}</Td><Td>{l.who}</Td><Td><span className="font-mono">{l.doc ?? '–'}</span></Td><Td right>{eur(l.amount)}</Td></tr>)}</tbody>
+          <tfoot><tr className="border-t border-slate-400 font-semibold"><Td>Summe</Td><Td /><Td /><Td right>{eur(cashTotal)}</Td></tr></tfoot>
+        </table>
+      )}
+    </Block>
+  )
+
   return (
     <PrintFrame name={`Tagesabschluss ${dmy(r.date)}`}>
       <div className="space-y-6 overflow-x-auto pb-2 print:space-y-0 print:overflow-visible print:pb-0">
@@ -114,7 +156,7 @@ export function DayReportSheet({ report: r }: { report: DayReport }) {
           <div className="flex items-end justify-between gap-4 border-b border-slate-300 pb-3">
             <div>
               <div className="text-[11px] uppercase tracking-wider text-slate-500">Tagesabschluss</div>
-              <div className="text-lg font-semibold">Sprungtag {weekday(r.date)} {dmy(r.date)}</div>
+              <div className="flex items-center gap-2 text-lg font-semibold">Sprungtag {weekday(r.date)} {dmy(r.date)}{!review.check && <span className="rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800">vorläufig</span>}</div>
             </div>
             <div className="font-mono text-[11px]">{r.number}</div>
           </div>
@@ -140,21 +182,23 @@ export function DayReportSheet({ report: r }: { report: DayReport }) {
             <div className="grid grid-cols-2 gap-4 rounded border border-slate-300 p-3">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-slate-500">Bargeld heute gesamt</div>
-                <div className="text-xl font-semibold tabular-nums">{eur(s.cash)}</div>
-                <Line label="von Mitgliedern" value={eur(s.memberCash)} />
-                <Line label="von Tandem-Gästen" value={eur(s.guestCash)} />
+                <div className="text-xl font-semibold tabular-nums">{eur(cashTotal)}</div>
+                {cashList ? <Line label="Kassabuchungen" value={String(cashList.length)} /> : <>
+                  <Line label="von Mitgliedern" value={eur(s.memberCash)} />
+                  <Line label="von Tandem-Gästen" value={eur(s.guestCash)} />
+                </>}
               </div>
               <div className="border-l border-slate-200 pl-4">
                 <div className="text-[10px] uppercase tracking-wider text-slate-500">Kassa danach</div>
-                <div className="text-xl font-semibold tabular-nums">{s.cashAfter === undefined ? '–' : eur(s.cashAfter)}</div>
+                <div className="text-xl font-semibold tabular-nums">{cashAfter === undefined ? '–' : eur(cashAfter)}</div>
                 <Line label="Kassa vorher" value={r.cashBefore === undefined ? '–' : eur(r.cashBefore)} />
-                <Line label="+ Bargeld heute" value={eur(s.cash)} />
+                <Line label="+ Bargeld heute" value={eur(cashTotal)} />
               </div>
             </div>
           </Block>
 
           <Block title="Der Tag in Zahlen">
-            <Line label={`Mitglieder (${s.members.length})`} value={eur(s.memberTotal)} />
+            <Line label={`Mitglieder (${people})`} value={eur(s.memberTotal)} />
             <Line label={`Tandem-Gäste (${s.guests.length})`} value={eur(s.guestTotal)} />
             {s.openTotal > 0 && <Line label="davon Überweisung offen" value={eur(s.openTotal)} strong tone="warn" />}
           </Block>
@@ -191,11 +235,11 @@ export function DayReportSheet({ report: r }: { report: DayReport }) {
 
         {split ? (
           <>
-            <Page no={2} of={pages} number={r.number}>{membersTable}</Page>
-            <Page no={3} of={pages} number={r.number}>{guestsTable}{signatures}</Page>
+            <Page no={2} of={pages} number={r.number}>{membersTable}{cashTable}</Page>
+            <Page no={3} of={pages} number={r.number}>{guestsTable}{notFlownTable}{signatures}</Page>
           </>
         ) : (
-          <Page no={2} of={pages} number={r.number}>{membersTable}{guestsTable}{signatures}</Page>
+          <Page no={2} of={pages} number={r.number}>{membersTable}{guestsTable}{notFlownTable}{cashTable}{signatures}</Page>
         )}
       </div>
     </PrintFrame>
@@ -242,7 +286,13 @@ export function useDayReview() {
   return {
     mayCheck: (r: DayReport) => can('manifest.close.confirm') && r.by !== actor && checkStateOf(check.reviewOf(r.id)) === 'pruefung',
     ownClosing: (r: DayReport) => r.by === actor,
-    confirm: (r: DayReport) => { check.confirm(r.id, stamp()); ledger.notify(`Tagesabschluss ${r.number} festgeschrieben`) },
+    confirm: (r: DayReport) => {
+      check.confirm(r.id, stamp())
+      // [Beschlossen] "Konto im Minus" goes out only now, with the balance after all corrections; whoever is no longer in minus gets nothing.
+      const minus = (check.reviewOf(r.id).minusQueued ?? []).map((memberId) => ({ memberId, balance: ledger.balances[memberId] ?? 0 })).filter((m) => m.balance < 0)
+      check.sendMinus(minus.map((m) => ({ ...m, dayDate: r.date, reportId: r.id })))
+      ledger.notify(`Tagesabschluss ${r.number} festgeschrieben${minus.length > 0 ? ` · ${minus.length === 1 ? '1 Mitglied' : `${minus.length} Mitglieder`} „Konto im Minus“ gesendet` : ''}`)
+    },
     /** The checker corrects a member's amount: the difference goes to the Betriebskonto, the correction stands on the report. */
     correct: (r: DayReport, i: number, to: number, reason: string) => {
       const l = r.lines[i]

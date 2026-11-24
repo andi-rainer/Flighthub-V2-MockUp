@@ -5,7 +5,7 @@ import { eur, type BankLine, type Receipt } from '../../data'
 import MemberPicker from '../../MemberPicker'
 import { useApp, TODAY_ISO } from '../../state'
 import { useSession } from '../../session/session'
-import { Badge, Button, Drawer, Segmented } from '../../ui'
+import { Badge, Button, Drawer, Segmented, useConfirm } from '../../ui'
 import { dmy } from '../manifest/data'
 import { Field, field, useActor } from '../tickets/parts'
 import { captureProblem, EMPTY_CAPTURE, ReceiptCapture, toNewReceipt, type Captured } from './capture'
@@ -247,9 +247,11 @@ export function SecondSignForm({ line, ledger, onClose }: { line: BankLine; ledg
 }
 
 export function ReceiptPicker({ line, ledger, onClose, onCreate }: { line: BankLine | null; ledger: Ledger; onClose: () => void; onCreate: (line: BankLine) => void }) {
+  const cf = useConfirm()
   const list = ledger.receipts.filter((r) => !r.lineId && !ledger.expenseOf(r.id)).sort((a, b) => Number(Math.abs(b.amount) === Math.abs(line?.amount ?? 0)) - Number(Math.abs(a.amount) === Math.abs(line?.amount ?? 0)))
   return (
-    <Drawer open={!!line} title="Beleg zuordnen" onClose={onClose}>
+    <>
+      <Drawer open={!!line} title="Beleg zuordnen" onClose={onClose}>
       {line && (
         <div className="space-y-4">
           <div className="rounded-xl bg-slate-50 p-4"><div className="text-sm">{line.text}</div><div className="text-xl font-semibold tabular-nums">{eur(line.amount)}</div></div>
@@ -259,7 +261,7 @@ export function ReceiptPicker({ line, ledger, onClose, onCreate }: { line: BankL
             return (
               <div key={r.id} className="flex items-center gap-3 rounded-xl border border-line p-3 text-sm">
                 <div className="min-w-0 flex-1"><div className="truncate font-medium">{r.supplier}{r.number ? ` · ${r.number}` : ''}{r.amount < 0 && <span className="ml-1.5"><Badge tone="info">Gutschrift</Badge></span>}</div><div className="truncate text-xs text-muted">{dmy(r.date)} · {r.amount ? eur(r.amount) : 'Betrag fehlt'} {match && <Badge tone="ok">Betrag passt</Badge>}</div></div>
-                <Button onClick={() => { ledger.linkReceipt(r.id, line.id); onClose() }}>Zuordnen</Button>
+                <Button onClick={() => cf.ask({ title: 'Rechnung zuordnen?', lines: [`${r.supplier}${r.number ? ` · ${r.number}` : ''}: ${eur(r.amount)}`, `zur Buchung „${line.text}“ (${eur(line.amount)}) vom ${dmy(line.date)}`], confirm: 'Zuordnen', run: () => { ledger.linkReceipt(r.id, line.id); onClose() } })}>Zuordnen</Button>
               </div>
             )
           })}
@@ -268,25 +270,29 @@ export function ReceiptPicker({ line, ledger, onClose, onCreate }: { line: BankL
         </div>
       )}
     </Drawer>
+      {cf.dialog}
+    </>
   )
 }
 
 /** Which booking paid this invoice. A Gutschrift (negative) is matched with money that came in. */
 export function LinePicker({ receipt, ledger, onClose }: { receipt: Receipt | null; ledger: Ledger; onClose: () => void }) {
+  const cf = useConfirm()
   const sug = receipt?.suggestion
   const credit = (receipt?.amount ?? 0) < 0
   const free = (l: BankLine) => !ledger.isLocked(l.date) && !ledger.receipts.some((r) => r.lineId === l.id) && (credit ? l.amount > 0 : l.needsReceipt)
   const fits = (l: BankLine) => Math.abs(l.amount) === Math.abs(receipt?.amount ?? 0)
   const list = ledger.lines.filter((l) => l.id === sug?.lineId || free(l)).sort((a, b) => Number(b.id === sug?.lineId) - Number(a.id === sug?.lineId) || Number(fits(b)) - Number(fits(a)) || b.date.localeCompare(a.date))
   return (
-    <Drawer open={!!receipt} title={sug ? 'Vorschlag prüfen' : 'Zu welcher Buchung gehört der Beleg?'} onClose={onClose}>
+    <>
+      <Drawer open={!!receipt} title={sug ? 'Vorschlag prüfen' : 'Zu welcher Buchung gehört der Beleg?'} onClose={onClose}>
       {receipt && (
         <div className="space-y-3">
           <div className="rounded-xl bg-slate-50 p-4 text-sm"><div className="font-medium">{receipt.supplier}{receipt.number ? ` · ${receipt.number}` : ''}</div><div className="text-muted">{receipt.name} · {receipt.amount ? eur(receipt.amount) : '–'}</div></div>
           {list.map((l) => {
             const proposed = l.id === sug?.lineId
             return (
-              <button key={l.id} onClick={() => { ledger.linkReceipt(receipt.id, l.id); onClose() }} className={clsx('flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left text-sm hover:bg-slate-50', proposed ? 'border-brand' : 'border-line')}>
+              <button key={l.id} onClick={() => cf.ask({ title: 'Rechnung zuordnen?', lines: [`${receipt.supplier}${receipt.number ? ` · ${receipt.number}` : ''}: ${receipt.amount ? eur(receipt.amount) : '–'}`, `zur Buchung „${l.text}“ (${eur(l.amount)}) vom ${dmy(l.date)}`], confirm: 'Zuordnen', run: () => { ledger.linkReceipt(receipt.id, l.id); onClose() } })} className={clsx('flex w-full items-center justify-between gap-3 rounded-xl border p-3 text-left text-sm hover:bg-slate-50', proposed ? 'border-brand' : 'border-line')}>
                 <span className="min-w-0"><span className="block text-xs text-muted">{dmy(l.date)} · {ledger.accountName(l.accountId)}{proposed && sug && <> · <Dot c={sug.confidence} /> Vorschlag: {sug.why}</>}{!proposed && fits(l) && ' · Betrag passt'}</span>{l.text}</span><span className="font-semibold tabular-nums">{eur(l.amount)}</span>
               </button>
             )
@@ -295,5 +301,7 @@ export function LinePicker({ receipt, ledger, onClose }: { receipt: Receipt | nu
         </div>
       )}
     </Drawer>
+      {cf.dialog}
+    </>
   )
 }

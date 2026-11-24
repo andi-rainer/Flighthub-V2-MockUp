@@ -6,18 +6,18 @@ import { TODAY_ISO, useApp } from '../../state'
 import { Badge, Button, Row, Section } from '../../ui'
 import { dayName, dmy, windowLabel } from '../manifest/data'
 import { NO_SLOT, SlotPicker, useManifestSync, type Slot } from './book'
-import { addMonths, daysLeft, expiresSoon, fullName, isUsable, PAY_NAME, VOUCHER_STATUS, type Voucher } from './data'
+import { addMonths, daysLeft, expiresSoon, fullName, isUsable, PAY_NAME, reviveCheck, VOUCHER_STATUS, type Voucher } from './data'
 import { NEW_PAY, payConfirm, PaymentFields, payReady, useBookPayment, type PayChoice } from './pay'
 import { payTarget } from './payments'
 import { ActionPanel, DetailShell, Field, field, newLog, ReasonField, useActor } from './parts'
 
-export type VoucherAction = 'redeem' | 'extend' | 'pay' | 'mail' | 'cancel'
+export type VoucherAction = 'redeem' | 'extend' | 'pay' | 'mail' | 'cancel' | 'revive'
 const perm = 'vouchers.manage'
 const input = `${field} w-full`
 
 /** Everything about one voucher: the facts, the dates, all actions and its history. Changes are written into the history. */
 export default function VoucherDetail({ code, initial, onClose }: { code: string; initial?: VoucherAction; onClose: () => void }) {
-  const { vouchers, setVouchers, catalog, bookings, days, can } = useApp()
+  const { vouchers, setVouchers, catalog, bookings, days, can, revive, ledger } = useApp()
   const { guarded } = useSession()
   const sync = useManifestSync()
   const book = useBookPayment()
@@ -33,6 +33,8 @@ export default function VoucherDetail({ code, initial, onClose }: { code: string
   const manage = can(perm)
   const usable = isUsable(v)
   const left = daysLeft(v.validUntil, TODAY_ISO)
+  const rv = reviveCheck(v, revive, TODAY_ISO)
+  const rvException = !!rv && !rv.allowed && can('vouchers.catalog.manage')
 
   const update = (patch: Partial<Voucher>, text: string, message?: string) => guarded(perm, () => {
     setVouchers((all) => all.map((x) => (x.code === v.code ? { ...x, ...patch, log: [...x.log, newLog(TODAY_ISO, actor, text)] } : x)))
@@ -42,11 +44,22 @@ export default function VoucherDetail({ code, initial, onClose }: { code: string
 
   /** The money goes into Finanzen first; Finanzen reports back to the voucher (paid, history). */
   const pay = (c: PayChoice) => guarded(perm, () => { book(payTarget('Gutschein', v.code, v.buyer), v.price, c, actor); setNotice('Die Zahlung ist in Finanzen gebucht.'); setAct(null) })
+  /** [Entwurf] Reactivating: the fee goes to Finanzen (cash) or stays open (transfer, online link); the voucher is usable again. */
+  const reviveNow = (how: ReviveHow, fee: number, reason?: string) => guarded(perm, () => {
+    if (!rv) return
+    const feeText = fee === 0 ? 'ohne Gebühr' : `Gebühr ${eur(fee)}${how === 'cash' ? ', bar in die Kassa' : how === 'bank' ? ', Überweisung offen' : ', Online-Link gesendet, Zahlung offen'}`
+    if (how === 'cash' && fee > 0) ledger.bookCash({ ...payTarget('Gutschein', `${v.code}-R`, v.buyer), label: `Gutschein ${v.code} · Reaktivierungsgebühr · ${fullName(v.buyer)}` }, fee, TODAY_ISO, actor)
+    const text = `Reaktiviert am ${dmy(TODAY_ISO)}, ${feeText}, gültig bis ${dmy(rv.until)}${reason ? `. Ausnahme: ${reason}` : ''}`
+    setVouchers((all) => all.map((x) => (x.code === v.code ? { ...x, status: 'active', validUntil: rv.until, bookingId: undefined, wishDay: undefined, log: [...x.log, newLog(TODAY_ISO, actor, text)] } : x)))
+    setNotice(`Der Gutschein ist wieder offen, gültig bis ${dmy(rv.until)}.`); setAct(null)
+  })
   const open = (a: VoucherAction) => () => { setNotice(null); setAct(a) }
   const actions = manage && (
     <>
       {usable && <Button variant={!v.bookingId && !v.wishDay && v.paid ? 'primary' : 'secondary'} disabled={!v.paid} onClick={open('redeem')}><span title={v.paid ? undefined : 'Erst die Zahlung erfassen'}>{v.bookingId ? 'Termin ändern' : v.wishDay ? 'Termin festlegen' : 'Termin buchen'}</span></Button>}
       {!v.paid && usable && <Button variant="primary" onClick={open('pay')}>Zahlung erfassen</Button>}
+      {rv && (rv.allowed || rvException) && <Button variant={rv.allowed ? 'primary' : 'secondary'} onClick={open('revive')}>{rv.allowed ? 'Reaktivieren' : 'Reaktivieren als Ausnahme'}</Button>}
+      {rv && !rv.allowed && !rvException && <span className="flex items-center gap-2"><Button disabled>Reaktivieren</Button><span className="text-xs text-muted">{rv.reason}</span></span>}
       {(usable || v.status === 'expired') && <Button onClick={open('extend')}>Gültigkeit verlängern</Button>}
       {v.status !== 'cancelled' && <Button onClick={open('mail')}>PDF senden</Button>}
       {usable && <Button variant="danger" className="ml-auto" onClick={open('cancel')}>Stornieren</Button>}
@@ -60,6 +73,7 @@ export default function VoucherDetail({ code, initial, onClose }: { code: string
       panel={act && (
         act === 'redeem' ? <RedeemPanel v={v} onDone={update} sync={sync} onCancel={() => setAct(null)} /> :
         act === 'extend' ? <ExtendPanel v={v} onDone={update} onCancel={() => setAct(null)} /> :
+        act === 'revive' && rv ? <RevivePanel v={v} check={rv} onDone={reviveNow} onCancel={() => setAct(null)} /> :
         act === 'pay' ? <PayPanel v={v} onDone={pay} onCancel={() => setAct(null)} /> :
         act === 'mail' ? <MailPanel v={v} onDone={update} onCancel={() => setAct(null)} /> :
         <CancelPanel v={v} hasBooking={!!booking} onDone={(reason) => { if (booking) sync.cancel(booking.id); update({ status: 'cancelled', statusBeforeCancel: v.status, cancelReason: reason }, `Storniert: ${reason}`, 'Der Gutschein ist storniert.') }} onCancel={() => setAct(null)} />
@@ -150,6 +164,35 @@ function ExtendPanel({ v, onDone, onCancel }: { v: Voucher; onDone: Done; onCanc
         <div className="flex gap-1.5 pb-0.5">{MONTHS.map((m) => <Button key={m} onClick={() => setUntil(addMonths(base, m))}>+{m} {m === 1 ? 'Monat' : 'Monate'}</Button>)}</div>
       </div>
       <ReasonField onChange={setReason} />
+    </ActionPanel>
+  )
+}
+
+type ReviveHow = 'cash' | 'bank' | 'online'
+const REVIVE_HOW: Record<ReviveHow, string> = { cash: 'Bar in die Kassa', bank: 'Überweisung (offen)', online: 'Online-Link senden (offen)' }
+function RevivePanel({ v, check, onDone, onCancel }: { v: Voucher; check: NonNullable<ReturnType<typeof reviveCheck>>; onDone: (how: ReviveHow, fee: number, reason?: string) => void; onCancel: () => void }) {
+  const [how, setHow] = useState<ReviveHow>('cash')
+  const [fee, setFee] = useState(String(check.fee))
+  const [reason, setReason] = useState('')
+  const exception = !check.allowed
+  const amount = Number(fee.replace(',', '.'))
+  const ok = Number.isFinite(amount) && amount >= 0 && (!exception || reason !== '')
+  return (
+    <ActionPanel title={exception ? 'Reaktivieren als Ausnahme' : 'Gutschein reaktivieren'} confirm={amount > 0 && how === 'cash' ? `Reaktivieren · ${eur(amount)} bar buchen` : 'Reaktivieren'} disabled={!ok} onConfirm={() => onDone(how, amount, exception ? reason : undefined)} onCancel={onCancel}>
+      {exception && <div className="text-sm text-bad">{check.reason}</div>}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Gebühr (€)">{exception ? <input aria-label="Gebühr" inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value.replace(/[^\d,.]/g, ''))} className={input} /> : <div className="py-2 text-sm font-semibold">{eur(check.fee)}</div>}</Field>
+        <Field label="Neu gültig bis"><div className="py-2 text-sm font-semibold">{dmy(check.until)}</div></Field>
+        <Field label="Bisher"><div className="py-2 text-sm">{VOUCHER_STATUS[v.status].label}, bis {dmy(v.validUntil)}</div></Field>
+      </div>
+      {amount > 0 && (
+        <Field label="Gebühr zahlen">
+          <select aria-label="Zahlung der Gebühr" value={how} onChange={(e) => setHow(e.target.value as ReviveHow)} className={`${field} w-full`}>
+            {(Object.keys(REVIVE_HOW) as ReviveHow[]).map((h) => <option key={h} value={h}>{REVIVE_HOW[h]}</option>)}
+          </select>
+        </Field>
+      )}
+      {exception && <ReasonField onChange={setReason} />}
     </ActionPanel>
   )
 }

@@ -5,31 +5,33 @@ import { useSession } from '../../session/session'
 import { TODAY_ISO, useApp } from '../../state'
 import { Badge, Button, Card, Segmented, usePaging } from '../../ui'
 import { dayName, dmy, windowLabel } from '../manifest/data'
-import { daysLeft, expiresSoon, fullName, PAY_NAME, VOUCHER_STATUS, type Voucher, type VoucherStatus } from './data'
+import { daysLeft, expiresSoon, fullName, PAY_NAME, reviveCheck, VOUCHER_STATUS, type ReviveSettings, type Voucher, type VoucherStatus } from './data'
 import { downloadCsv, FilterBar, inRange, matches, NO_FILTERS, type Filters } from './parts'
 import NewVoucher from './NewVoucher'
 import VoucherDetail, { type VoucherAction } from './VoucherDetail'
 
-type Quick = 'alle' | 'offen' | 'bald' | 'zahlung'
-const QUICK: { value: Quick; label: string; test: (v: Voucher) => boolean }[] = [
+type Quick = 'alle' | 'offen' | 'bald' | 'zahlung' | 'revive'
+const QUICK: { value: Quick; label: string; test: (v: Voucher, revive: ReviveSettings) => boolean }[] = [
   { value: 'alle', label: 'Alle', test: () => true },
   { value: 'offen', label: 'Ohne Termin', test: (v) => v.status === 'active' || v.status === 'pre_scheduled' },
   { value: 'bald', label: 'Laufen bald ab', test: (v) => expiresSoon(v, TODAY_ISO) },
   { value: 'zahlung', label: 'Zahlung offen', test: (v) => !v.paid && v.status !== 'cancelled' },
+  { value: 'revive', label: 'Reaktivierbar', test: (v, r) => !!reviveCheck(v, r, TODAY_ISO)?.allowed },
 ]
 /** The one action a row offers in its last column: the usual next step. Everything else is in the detail view. */
-const next = (v: Voucher): { label: string; action: VoucherAction } | null =>
-  v.status === 'unpaid' ? { label: 'Zahlung erfassen', action: 'pay' } : v.status === 'active' || v.status === 'pre_scheduled' ? { label: 'Termin buchen', action: 'redeem' } : null
+const next = (v: Voucher, revive: ReviveSettings): { label: string; action: VoucherAction } | null =>
+  v.status === 'unpaid' ? { label: 'Zahlung erfassen', action: 'pay' } : reviveCheck(v, revive, TODAY_ISO)?.allowed ? { label: 'Reaktivieren', action: 'revive' } : v.status === 'active' || v.status === 'pre_scheduled' ? { label: 'Termin buchen', action: 'redeem' } : null
 
 /** All vouchers: search, filter, open one for its facts, actions and history. */
 export default function VoucherTab({ openCode, onOpen }: { openCode?: string; onOpen: (code?: string) => void }) {
-  const { vouchers, catalog, bookings, days, can } = useApp()
+  const { vouchers, catalog, bookings, days, can, revive } = useApp()
   const { guarded } = useSession()
   const [f, setF] = useState<Filters>(NO_FILTERS)
   const [quick, setQuick] = useState<Quick>('alle')
   const [action, setAction] = useState<VoucherAction | undefined>()
   const [creating, setCreating] = useState(false)
-  const test = QUICK.find((q) => q.value === quick)!.test
+  const quickTest = QUICK.find((q) => q.value === quick)!.test
+  const test = (v: Voucher) => quickTest(v, revive)
   const list = vouchers
     .filter((v) => test(v) && matches(f.q, v.code, fullName(v.buyer), v.buyer.email) && (f.status.length === 0 || f.status.includes(v.status)) && (!f.type || v.typeId === f.type) && (!f.pay || (f.pay === 'paid') === v.paid) && inRange(v.bought, f.from, f.to))
     .sort((a, b) => b.bought.localeCompare(a.bought) || b.code.localeCompare(a.code))
@@ -50,7 +52,7 @@ export default function VoucherTab({ openCode, onOpen }: { openCode?: string; on
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Segmented value={quick} onChange={setQuick} options={QUICK.map((q) => ({ value: q.value, label: `${q.label} (${vouchers.filter(q.test).length})` }))} />
+        <Segmented value={quick} onChange={setQuick} options={QUICK.map((q) => ({ value: q.value, label: `${q.label} (${vouchers.filter((v) => q.test(v, revive)).length})` }))} />
         <div className="flex gap-2">
           {can('vouchers.export') && <Button onClick={exportCsv}><Download size={14} /> Exportieren</Button>}
           {can('vouchers.create') && <Button variant="primary" onClick={() => setCreating(true)}><Plus size={14} /> Gutschein ausstellen</Button>}
@@ -61,7 +63,7 @@ export default function VoucherTab({ openCode, onOpen }: { openCode?: string; on
         types={catalog.filter((c) => c.kind === 'voucher').map((c) => ({ value: c.id, label: c.name }))} />
       <Card className="divide-y divide-line">
         {paging.rows.map((v) => {
-          const n = next(v)
+          const n = next(v, revive)
           const left = daysLeft(v.validUntil, TODAY_ISO)
           const when = dateOf(v)
           return (

@@ -114,6 +114,17 @@ export function addMonths(iso: string, months: number): string {
   return t.toISOString().slice(0, 10)
 }
 
+// ---------- [Entwurf] Tandem not flown, decided at the closing of the day ----------
+/** Why a tandem did not happen. Wetter and Technik are on the club's side; the guest keeps everything. */
+export const NOT_FLOWN_REASONS = ['Wetter', 'Technik', 'Gast verhindert', 'Sonstiges'] as const
+export type NotFlownReason = (typeof NOT_FLOWN_REASONS)[number]
+/** The history line of a voucher or ticket for the decision of the closing. */
+export function notFlownLog(o: { what: 'Gutschein' | 'Ticket'; dayIso: string; outcome: 'verschoben' | 'nicht_erschienen'; reason?: string; kulanz?: string; newDate?: string; paid?: boolean }) {
+  const day = o.dayIso.split('-').reverse().join('.')
+  if (o.outcome === 'nicht_erschienen') return `Nicht erschienen am ${day}, ${o.what} verfällt${o.paid ? (o.what === 'Ticket' ? ', Ertrag verbucht' : '') : ', Zahlung bleibt offen'}`
+  return `Nicht geflogen am ${day}${o.reason ? ` (${o.reason})` : ''}, verschoben${o.kulanz ? ` aus Kulanz: ${o.kulanz}` : ''}. ${o.newDate ? `Neuer Termin ${o.newDate}` : 'Termin offen'}, ${o.what} bleibt gültig`
+}
+
 // ---------- Tickets ----------
 export type TicketStatus = 'booked' | 'flown' | 'noshow' | 'cancelled'
 export const TICKET_STATUS: Record<TicketStatus, { label: string; tone: 'ok' | 'warn' | 'bad' | 'info' | 'neutral' }> = {
@@ -185,3 +196,30 @@ const rawTickets: Ticket[] = [
   { code: 'TB-1075', typeId: 'p1', buyer: person('Paul Gruber'), guest: 'Paul Gruber', weight: 82, bought: '2026-09-02', day: '2026-10-10', windowLabel: '12:00–14:00', price: 220, pay: 'online', paid: true, status: 'cancelled', statusBeforeCancel: 'booked', cancelReason: 'Gast krank, Erstattung offen', source: 'Webshop', log: [bought('2026-09-02', 220, 'online'), ev('l2', '2026-10-09 18:02', 'Storniert: Gast krank, Erstattung offen', 'Eva Steiner')] },
 ]
 export const seedTickets = rawTickets.map(withPaidOn)
+
+// ---------- [Entwurf] Reactivating expired and forfeited vouchers, set per club ----------
+export type FeeKind = 'eur' | 'pct'
+export interface ReviveRule { on: boolean; feeKind: FeeKind; fee: number }
+export interface ReviveSettings {
+  /** Expired vouchers: allowed up to `months` months after the day they ran out. */
+  expired: ReviveRule & { months: number }
+  /** Forfeited by a no-show: no time limit. */
+  noshow: ReviveRule
+  /** New validity from the day of the reactivation. */
+  validityMonths: number
+}
+export const DEFAULT_REVIVE: ReviveSettings = { expired: { on: true, months: 12, feeKind: 'eur', fee: 30 }, noshow: { on: true, feeKind: 'eur', fee: 30 }, validityMonths: 6 }
+export const feeText = (r: ReviveRule) => (r.feeKind === 'eur' ? `${r.fee} €` : `${r.fee} % des Werts`)
+export const feeOf = (r: ReviveRule, price: number) => (r.feeKind === 'eur' ? r.fee : Math.round(price * r.fee) / 100)
+
+export interface ReviveCheck { kind: 'expired' | 'noshow'; allowed: boolean; /** Why not, short. */ reason?: string; fee: number; until: string }
+/** Can this voucher be reactivated under the club's settings? `null` when it is neither expired nor forfeited. */
+export function reviveCheck(v: Pick<Voucher, 'status' | 'validUntil' | 'price'>, s: ReviveSettings, todayIso: string): ReviveCheck | null {
+  if (v.status !== 'expired' && v.status !== 'redeemed_noshow') return null
+  const kind = v.status === 'expired' ? 'expired' : 'noshow'
+  const rule = kind === 'expired' ? s.expired : s.noshow
+  const base = { kind, fee: feeOf(rule, v.price), until: addMonths(todayIso, s.validityMonths) } as const
+  if (!rule.on) return { ...base, allowed: false, reason: kind === 'expired' ? 'Reaktivierung abgelaufener Gutscheine ist ausgeschaltet' : 'Reaktivierung verfallener Gutscheine ist ausgeschaltet' }
+  if (kind === 'expired' && addMonths(v.validUntil, s.expired.months) < todayIso) return { ...base, allowed: false, reason: `Mehr als ${s.expired.months} Monate abgelaufen` }
+  return { ...base, allowed: true }
+}

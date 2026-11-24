@@ -11,6 +11,7 @@ import AfpPdf from '../afp/AfpPdf'
 import { flightPath } from '../FlightPage'
 import { dmy, type ManifestDay } from './data'
 import { slots } from './slots'
+import { LoadEditLink } from './LoadEdit'
 import { MasterPick } from './TandemMaster'
 import { GuestPayDrawer, PayBadge, useGuestPay } from './GuestPayment'
 import type { TandemBooking } from './data'
@@ -143,6 +144,7 @@ export default function FlightCard({ load: l, no, day, capacity, fits, dropping,
             Springer gesamt <b>{kg} kg</b>{limits && <> · max. {limits.max} kg</>}{noWeight > 0 && <> · Gewicht fehlt bei {noWeight}</>}
           </div>
         )}
+        {landed && running && <div className="mt-2 flex justify-end"><LoadEditLink day={day} load={l} /></div>}
         {l.status === 'geplant' && running && blockers.length > 0 && <p className="mt-3 text-xs text-warn">Vor dem Boarding offen: {blockers.join(', ')}</p>}
         <div className="mt-3 flex gap-2">
           {fits && <Button variant="primary" size="lg" className="flex-1" onClick={onPlace}>Hier einsetzen</Button>}

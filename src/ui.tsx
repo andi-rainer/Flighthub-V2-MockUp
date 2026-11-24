@@ -271,6 +271,37 @@ export function ConfirmDelete({ what, onConfirm, blocked }: { what: string; onCo
   )
 }
 
+/**
+ * [Entwurf] Confirmation of an action that is not easily undone (a booking, removing someone from a flown load, closing a day). A small
+ * centred dialog: what happens in one sentence, optional lines (amounts, who), "Abbrechen" and the action. Big buttons for the tablet.
+ */
+export function ConfirmDialog({ open, title, lines, confirm, onConfirm, onCancel, danger }: {
+  open: boolean; title: string; lines?: ReactNode[]; confirm: string; onConfirm: () => void; onCancel: () => void; danger?: boolean
+}) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-900/40 p-4" role="dialog" aria-modal="true" aria-label={title} onClick={onCancel}>
+      <div className="w-full max-w-md rounded-2xl bg-surface p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold">{title}</h3>
+        {lines && lines.length > 0 && <ul className="mt-3 space-y-1 text-sm text-ink">{lines.map((l, i) => <li key={i}>{l}</li>)}</ul>}
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <Button size="lg" onClick={onCancel}>Abbrechen</Button>
+          <Button size="lg" variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>{confirm}</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Holds one pending confirmation: `ask({...})` opens it, the dialog element goes once into the page. */
+export function useConfirm() {
+  const [p, setP] = useState<null | { title: string; lines?: ReactNode[]; confirm: string; danger?: boolean; run: () => void }>(null)
+  return {
+    ask: (q: { title: string; lines?: ReactNode[]; confirm: string; danger?: boolean; run: () => void }) => setP(q),
+    dialog: <ConfirmDialog open={!!p} title={p?.title ?? ''} lines={p?.lines} confirm={p?.confirm ?? ''} danger={p?.danger} onCancel={() => setP(null)} onConfirm={() => { const run = p?.run; setP(null); run?.() }} />,
+  }
+}
+
 /** Compact input look used in forms and filters. */
 export const field = 'h-9 rounded-lg border border-line bg-surface px-2.5 text-sm outline-none focus:border-brand'
 

@@ -18,6 +18,8 @@ Alles hier ist `[Beschlossen]`, sofern nicht anders markiert. Symbole: ✔ im Kl
 
 ## 2. Bedienung (gilt überall)
 
+- **Bestätigung für alles, was sich nicht leicht rückgängig machen lässt** (Buchungen, Personen beim Tag abschließen von einer Load entfernen, Tag abschließen). Solche Knöpfe sind dezent. ○
+- **Grundton:** einfach halten. FlightHub dient einem gemeinnützigen Verein, in dem es um Gemeinschaft, Spaß und Freude am Fliegen und Springen geht, nicht um eine Firma.
 - **Ein klarer Weg zum Ziel.** Ausnahmen sind diskret, brauchen einen Grund und eine Bestätigung und werden dokumentiert.
 - **Eine Personen-Auswahl für die ganze App:** durchgehende Komponente mit Sofortsuche (Name oder Funktion), die nur Mitglieder mit der passenden Funktion oder Berechtigung zeigt, Zusatzinformationen darstellt und je nach Aufgabe sinnvoll sortiert. ✔
 - Aktionen in Tabellen übersichtlich und einheitlich, nicht verstreut.
@@ -185,6 +187,17 @@ Alles hier ist `[Beschlossen]`, sofern nicht anders markiert. Symbole: ✔ im Kl
 
 - **Tagesabschluss:** Jeder mit Manifest-Rechten für den Tag kann den Tag abschließen. Danach **prüft Kassier oder Obmann** (Pflicht) und **korrigiert selbst**, was falsch ist; es gibt keinen Weg zurück an das Manifest. Danach ist der Tag **festgeschrieben**, die Buchungen stehen fest. Mitglieder, deren Konto durch den Tag ins Minus fällt, bekommen eine Nachricht. ○
 - **Treibstoff ohne Beleg:** Vereinseigener Treibstoff braucht keinen Beleg und keinen Eigenbeleg; bei gekauftem Treibstoff ohne Beleg ist ein Eigenbeleg möglich. ○
+- **Kassa immer aktuell:** Bargeld wird nie über den Tag gesammelt. Jede Bar-Zahlung (Einzahlung, Tandem, Abrechnung) ist sofort eine eigene Kassabuchung mit Beleg. **Beim Check-out wird das Mitglied abgerechnet** (wie bisher beim Tagesabschluss). **Tag abschließen** zeigt danach nur, was schon abgerechnet und was noch offen ist, und erlaubt Korrekturen. ○
+- **Korrigieren in der Abrechnung ändert nie den Preis,** sondern wie bezahlt wurde: vom Konto statt bar oder umgekehrt, eine andere Bar-Summe (größere oder kleinere Vorauszahlung), teils bar und Rest vom Betriebskonto (Beispiel: 80 € Sprünge, 50 € bar: 80 € Ausgang und 50 € Eingang am Betriebskonto, 50 € in die Kassa). ○
+- **Zusatzkosten** lassen sich beim Abrechnen verrechnen (Leihgebühr Rig, Packen oder Rigging, Spesen, sonstige Abmachungen). Sie sind **je Verein frei definierbar und änderbar** (Preise ändern sich über die Zeit, frühere Abrechnungen behalten ihren Preis). ○
+- **Abrechnen kennt nur „vom Konto“ und „bar“.** Bar darf weniger oder mehr als der Betrag sein; die Differenz ändert sichtbar den Stand des Betriebskontos. **Korrigieren** ändert genau das, was beim Abrechnen festgelegt wurde (Bezahlung, Bar-Betrag, Zusatzkosten; Sprünge über die Loads). ○
+- **Gelandete Flüge bleiben im Notfall bearbeitbar:** Eine Person lässt sich aus einer Load entfernen oder gegen die tatsächlich mitgeflogene tauschen (etwa beim Check-out bemerkt). Das ist eine kritische Aktion: dezenter Zugang, Bestätigung mit Folgen für die Abrechnung, Vermerk an der Load. ○
+- **Abschluss eines Tages:** Vor dem Abschließen sind die Mails an Gäste und Mitglieder einzeln wählbar (senden ja oder nein) mit Vorschau, und alle neuen Buchungen auf Bargeld-, Bank- und Mitgliederkonten werden in einer Vorschau gezeigt. Alles bleibt **vorläufig**, bis Kassier oder Obmann den Tag festschreibt. ○
+- **„Konto im Minus“ erst beim Festschreiben:** Die Nachricht geht erst raus, wenn Kassier oder Obmann den Tag festschreibt, mit dem Kontostand dann. ✔
+- **Kassa-Buchungen in Finanzen** eines noch nicht festgeschriebenen Tags sind als **vorläufig** gekennzeichnet. ✔
+- **Manifest, Tage:** „Alle“ zeigt geplante Tage zuerst, dann vergangene, jeweils nach Datum absteigend. Ist kein Tag geplant, öffnet die Liste auf „Vergangene“, damit keine leere Seite erscheint. ✔
+- **Quittungen und Rechnungen für das Betriebskonto** tragen weder Namen noch Unterschrift des Kassiers. ○
+- **Tandem nicht geflogen:** Fällt ein Tandem aus, obwohl der Gast da war (Wetter, Technik), behalten Ticket oder Gutschein ihre Gültigkeit und der Termin wird verschoben. **No-Shows verfallen** üblicherweise, auch bei offener Überweisung. **Abgelaufene oder verfallene Gutscheine lassen sich reaktivieren**, je Verein einstellbar (ob, bis wann, Gebühr). Im Abschluss wird je Gast gewählt, was passiert ist. Sportspringer, die nicht gesprungen sind, zahlen nichts und brauchen keine Bestätigung; sichtbar ist, wer wie oft in welchem Flug gesprungen ist, damit korrigiert werden kann. ○
 - **Tandem-Gast ohne Ticket:** Am Platz wird ein Ticket angelegt und bar bezahlt; die Logik bleibt „Ticket kaufen, dann springen“. ○
 
 ## 8. Rechte, Anmeldung, Geräte

@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import { eur, members, type BankLine } from '../../data'
 import { Badge, Button, Card, Drawer, FilePick, Segmented, SplitButton, usePaging, type PickedFile } from '../../ui'
 import { TODAY_ISO, useApp } from '../../state'
+import { Provisional, useProvisionalCash } from '../manifest/closingPreview'
 import { dmy } from '../manifest/data'
 import { Field, field } from '../tickets/parts'
 import AccountStrip, { Transfer } from './AccountStrip'
@@ -168,6 +169,7 @@ function Line({ line: l, status, ledger, rules, onOpen, onAssign, onInvoice, onL
   const counterAt = !target && s?.target.kind === 'umbuchung' ? counterCandidates(l, s.target.accountId, ledger)[0] : undefined
   const proposed = !target && rs.length === 0 ? ledger.receipts.find((r) => !r.lineId && r.suggestion?.lineId === l.id) : undefined
   const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn() }
+  const provisional = useProvisionalCash()(l)
   return (
     <div role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => e.key === 'Enter' && onOpen()}
       className={clsx('grid cursor-pointer gap-x-3 gap-y-1 border-l-4 px-3 py-2 hover:bg-slate-50 md:items-center', COLS, EDGE[status])}>
@@ -175,7 +177,7 @@ function Line({ line: l, status, ledger, rules, onOpen, onAssign, onInvoice, onL
 
       <div className="min-w-0">
         <div className="text-sm font-medium leading-snug" title={l.bookingText ? `Bank: ${l.text}` : undefined}>{l.bookingText ?? l.text}</div>
-        <div className="flex items-center gap-1.5 text-xs text-muted"><span className="rounded bg-slate-100 px-1.5 py-px">{ledger.accountName(l.accountId)}</span>{l.check && <span title={l.check.text} className={l.check.tone === 'ok' ? 'text-ok' : 'text-warn'}><Sparkles size={12} /></span>}</div>
+        <div className="flex items-center gap-1.5 text-xs text-muted"><span className="rounded bg-slate-100 px-1.5 py-px">{ledger.accountName(l.accountId)}</span>{provisional && <Provisional />}{l.check && <span title={l.check.text} className={l.check.tone === 'ok' ? 'text-ok' : 'text-warn'}><Sparkles size={12} /></span>}</div>
       </div>
 
       <div className="flex min-w-0 flex-wrap items-center gap-1">
