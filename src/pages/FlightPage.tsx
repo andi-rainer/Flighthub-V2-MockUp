@@ -90,7 +90,10 @@ function Flight({ source }: { source: FlightSource }) {
   const fuelL = saved?.fuelL ?? adj.start + (refuel.on && when === 'vor' ? refuel.amount : 0)
   const fuelBlock = (adj.mode && adj.problem) || (refuel.on && refuel.problem) || null
   const [planned, setPlanned] = useState(saved?.planned ?? (load ? settings.cycleMin : 45))
-  const [alternate, setAlternate] = useState(saved?.alternateMin ?? afpConfig.alternateMin)
+  // The flight time to the alternate differs from flight to flight and is the pilot's call: no default, it has to be entered (0 is allowed).
+  const [altText, setAltText] = useState(saved?.alternateMin !== undefined ? String(saved.alternateMin) : '')
+  const alternate = Number(altText) || 0
+  const altMissing = altText === ''
   // The kind of a flight that is not a jump flight comes from the club's operation kinds (price and booking are set there).
   const offered = offeredFor(kinds, ac.reg, modules).filter((k) => !k.manifest)
   const [kind, setKind] = useState<string>(saved?.kind ?? offered[0]?.name ?? '')
@@ -190,7 +193,7 @@ function Flight({ source }: { source: FlightSource }) {
         <label className="block text-sm font-medium">Pilot kg<input disabled={fieldsLocked} inputMode="decimal" value={pilotKg || ''} onChange={(e) => setPilotKg(num(e.target.value))} className={clsx(inp, 'mt-1 w-full')} /></label>
         <label className="block text-sm font-medium">Flugzeug<input disabled value={ac.reg} className={clsx(inp, 'mt-1 w-full')} /></label>
         <label className="block text-sm font-medium">Geplante Flugzeit (min)<input disabled={fieldsLocked} inputMode="numeric" value={planned || ''} onChange={(e) => setPlanned(num(e.target.value))} className={clsx(inp, 'mt-1 w-full')} /></label>
-        <label className="block text-sm font-medium">Flugzeit zum Alternate (min)<input aria-label="Flugzeit zum Alternate" disabled={fieldsLocked} inputMode="numeric" value={alternate} onChange={(e) => setAlternate(num(e.target.value))} className={clsx(inp, 'mt-1 w-full')} /></label>
+        <label className="block text-sm font-medium">Flugzeit zum Alternate (min)<input aria-label="Flugzeit zum Alternate" disabled={fieldsLocked} inputMode="numeric" value={altText} onChange={(e) => setAltText(e.target.value.replace(/\D/g, ''))} className={clsx(altMissing && !fieldsLocked ? inp.replace('border-line', 'border-bad') : inp, 'mt-1 w-full')} /></label>
       </div>
       {!load && <div className="text-sm font-medium">Art des Flugs<div className="mt-1">{offered.length > 0 ? <Segmented value={kind} onChange={setKind} options={offered.map((k) => ({ value: k.name, label: k.name }))} /> : <p className="text-sm text-bad">Für {ac.reg} ist in keiner Betriebsart ein Preis hinterlegt.</p>}</div></div>}
       <p className="text-xs text-muted">{load ? 'Aus dem Manifest übernommen.' : 'Aus deiner Reservierung übernommen.'}</p>
@@ -231,7 +234,7 @@ function Flight({ source }: { source: FlightSource }) {
       {fuelBlock && !fieldsLocked && <p className="text-xs text-muted">Treibstoff: {fuelBlock}</p>}
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-xl bg-slate-50 p-3"><div className="text-xs text-muted">Treibstoff beim Start</div><div className="text-2xl font-semibold tabular-nums">{u.fuelText(fuelL)}</div><div className="text-xs text-muted">{u.massText(fuelL * 0.72)}</div></div>
-        <div className={clsx('rounded-xl p-3', endurance >= need ? 'bg-slate-50' : 'bg-bad-soft text-bad')}><div className={clsx('text-xs', endurance >= need ? 'text-muted' : '')}>Endurance beim Start</div><div className="text-2xl font-semibold tabular-nums">{hm(endurance)}</div><div className={clsx('text-xs', endurance >= need ? 'text-muted' : '')}>benötigt {hm(need)} (Flug {planned} + Alternate {alternate} + Reserve {reserveMin} min, mindestens {u.fuelText(Math.ceil((d.burnLph * need) / 60))})</div></div>
+        <div className={clsx('rounded-xl p-3', endurance >= need ? 'bg-slate-50' : 'bg-bad-soft text-bad')}><div className={clsx('text-xs', endurance >= need ? 'text-muted' : '')}>Endurance beim Start</div><div className="text-2xl font-semibold tabular-nums">{hm(endurance)}</div><div className={clsx('text-xs', endurance >= need ? 'text-muted' : '')}>benötigt {hm(need)} (Flug {planned} + Alternate {altMissing ? '?' : alternate} + Reserve {reserveMin} min, mindestens {u.fuelText(Math.ceil((d.burnLph * need) / 60))})</div></div>
       </div>
       <p className="text-sm text-muted">Den Treibstoff kennt nur der Pilot am Flugzeug.</p>
     </Card>,
@@ -252,7 +255,7 @@ function Flight({ source }: { source: FlightSource }) {
       {!released && mayRelease && (!afpConfig.evidence || !mb) && (
         <div className="space-y-3">
           {!mb && <label className="flex cursor-pointer items-start gap-3 text-sm"><input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0" /><span>Ich habe verstanden: Masse und Schwerpunkt erstelle und führe ich selbst mit, ich verantworte sie.</span></label>}
-          <Button variant="primary" size="lg" className="w-full" disabled={!go || (!mb && !ack) || !!fuelBlock} onClick={release}>{W} freigeben</Button>
+          <Button variant="primary" size="lg" className="w-full" disabled={!go || (!mb && !ack) || !!fuelBlock || altMissing} onClick={release}>{W} freigeben</Button>
         </div>
       )}
       {!released && mayRelease && afpConfig.evidence && mb && (
@@ -260,9 +263,10 @@ function Flight({ source }: { source: FlightSource }) {
           <label className="flex cursor-pointer items-start gap-3 text-sm"><input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0" /><span>Ich bestätige, dass die Vorflugkontrolle ordnungsgemäß durchgeführt wurde.</span></label>
           <div><div className="mb-1 text-sm font-medium">Unterschrift</div><SignaturePad onInk={(b) => !b && setSig('')} onImage={setSig} /></div>
           <p className="text-xs text-muted">Als Pilot bist du dafür verantwortlich, dass die Angaben richtig sind und mit den Werten des AFM/POH übereinstimmen.</p>
-          <Button variant="primary" size="lg" className="w-full" disabled={!go || !ack || !sig || !!fuelBlock} onClick={release}>{W} freigeben{afpConfig.mailPdf ? <> und an {profileOf(pilotId).email} senden</> : ' und unterschreiben'}</Button>
+          <Button variant="primary" size="lg" className="w-full" disabled={!go || !ack || !sig || !!fuelBlock || altMissing} onClick={release}>{W} freigeben{afpConfig.mailPdf ? <> und an {profileOf(pilotId).email} senden</> : ' und unterschreiben'}</Button>
         </div>
       )}
+      {!released && mayRelease && altMissing && <p className="text-sm text-bad">Die Flugzeit zum Alternate fehlt. <button onClick={() => setStep(0)} className="font-medium underline">In Schritt 1 eintragen</button></p>}
       {!released && !go && mb && <p className="text-sm text-bad">Solange Masse und Schwerpunkt nicht im Limit sind, gibt es keine Freigabe und kein Off-block.</p>}
       {released && <Banner>{W} freigegeben um {released.releasedAt} von {released.pilot}. Gesperrt, Änderungen gehen nur über {sky ? 'ein neues AFP' : 'eine neue Freigabe'}.</Banner>}
       {released?.release && (
@@ -340,8 +344,8 @@ function Flight({ source }: { source: FlightSource }) {
       </ol>
 
       {mb && (
-        <div className={clsx('mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl px-4 py-3', go ? 'bg-ok-soft text-ok' : 'bg-bad-soft text-bad')}>
-          <span className="font-semibold">{go ? 'Alles im Limit' : 'Nicht freigebbar'}</span>
+        <div className={clsx('mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl px-4 py-3', !go ? 'bg-bad-soft text-bad' : altMissing && !released ? 'bg-warn-soft text-amber-900' : 'bg-ok-soft text-ok')}>
+          <span className="font-semibold">{!go ? 'Nicht freigebbar' : altMissing && !released ? 'Flugzeit zum Alternate fehlt' : 'Alles im Limit'}</span>
           <span className="text-sm">{u.massText(start.w)} · CG {u.lengthText(start.arm)} · Endurance {hm(endurance)}</span>
         </div>
       )}

@@ -91,6 +91,7 @@ export const initialCategories: Category[] = [
   { id: 'k-hangar', name: 'Hangar und Miete', type: 'Kosten', fixed: true },
   { id: 'k-fees', name: 'Landegebühren', type: 'Kosten', fixed: false },
   { id: 'k-admin', name: 'Verwaltung und Beiträge', type: 'Kosten', fixed: true },
+  { id: 'k-bank', name: 'Bankspesen', type: 'Kosten', fixed: false },
   { id: 'e-ticket', name: 'Ticketverkauf', type: 'Ertrag' },
   { id: 'e-tandem', name: 'Tandem online', type: 'Ertrag' },
   { id: 'e-charter', name: 'Charter', type: 'Ertrag' },
@@ -120,6 +121,8 @@ export interface Receipt {
   fuel?: { liters: number; perLiter: number }
   /** A member who paid it privately (Auslage). */
   paidBy?: string
+  /** [Entwurf] A document of the club for money in (Ausgangsrechnung, Beitragsvorschreibung, payout report of the shop): not a cost. */
+  outgoing?: boolean
   lineId?: string
   /** Planned coding of an invoice that is not booked yet. Once it is on a booking, the booking codes it. */
   splits?: Split[]
@@ -239,6 +242,23 @@ for (const [y, tandem, ticket, charter, fees] of [[2024, 3400, 2100, 1900, 16_20
 INCOME.push(['2024-12-18', 'Spende Weihnachtsaktion', 400, 'cc-verein', 'e-donation'], ['2025-08-09', 'Spende Fliegerfest', 650, 'cc-verein', 'e-donation'], ['2026-06-14', 'Spende Platzfest', 300, 'cc-verein', 'e-donation'])
 export const incomeLines: BankLine[] = INCOME.map(([date, text, amount], i) => ({ id: `i${i + 1}`, date, text, amount, accountId: BANK, needsReceipt: false }))
 export const incomeDone: Record<string, Target> = Object.fromEntries(INCOME.map(([, , , cc, cat], i) => [`i${i + 1}`, one(cc, cat)]))
+/** The document of each income: our own (Beitragsvorschreibung, sales list, invoice to the other club) or the payout report of the shop. Donations have none: the bank statement is enough. */
+const INCOME_DOC: Record<string, (y: string, i: number) => { name: string; supplier: string; number: string }> = {
+  'e-fees': (y) => ({ name: `Beitragsvorschreibung-${y}.pdf`, supplier: 'Beitragsvorschreibung', number: `BV-${y}` }),
+  'e-tandem': (y, i) => ({ name: `Stripe-Auszahlungsbericht-${y}-${i}.pdf`, supplier: 'Stripe Auszahlungsbericht', number: `po_${y}${String(i).padStart(3, '0')}` }),
+  'e-ticket': (y, i) => ({ name: `Ticketverkauf-Sammelbeleg-${y}-${i}.pdf`, supplier: 'Ticketverkauf Sammelbeleg', number: `TS-${y}-${String(i).padStart(3, '0')}` }),
+  'e-charter': (y, i) => ({ name: `AR-${y}-${String(i).padStart(3, '0')}.pdf`, supplier: 'Fallschirmclub Linz', number: `AR-${y}-${String(i).padStart(3, '0')}` }),
+}
+export const incomeReceipts: Receipt[] = INCOME.flatMap(([date, , amount, , cat], i) => {
+  const doc = INCOME_DOC[cat]?.(date.slice(0, 4), i + 1)
+  return doc ? [{ id: `ri${i + 1}`, ...doc, amount, date, source: 'Upload' as const, lineId: `i${i + 1}`, outgoing: true }] : []
+})
+export const incomeStatementLines: string[] = INCOME.flatMap(([, , , , cat], i) => (cat === 'e-donation' ? [`i${i + 1}`] : []))
+
+/** One Auslage already credited (October): booked on its cost center as if the club had paid it, the invoice linked like any other. */
+export const expenseLines: BankLine[] = [{ id: 'ax1', date: '2026-10-18', text: 'Auslage Bernd Huber: Motoröl für OE-DZA', amount: -38.6, accountId: AUSLAGE_ID, needsReceipt: true }]
+export const expenseDone: Record<string, Target> = { ax1: { kind: 'auslage', memberId: 'm2', splits: [{ costCenterId: 'cc-oedza', categoryId: 'k-maint', percent: 100 }] } }
+export const expenseReceipts: Receipt[] = [{ id: 'rx1', name: 'Lagerhaus-4471.pdf', supplier: 'Lagerhaus', number: '4471', amount: 38.6, date: '2026-10-18', source: 'Upload', paidBy: 'm2', lineId: 'ax1' }]
 
 /** Flight minutes per year and aircraft that are not in the Bordbuch of the prototype (before it starts; for the running year January to September). */
 export const EARLIER_MINUTES: Record<string, Record<string, number>> = {

@@ -1,17 +1,19 @@
 import clsx from 'clsx'
 import { useSearchParams } from 'react-router-dom'
+import { AUSLAGE_ID } from '../data'
 import { type Permission } from '../permissions'
 import { useApp } from '../state'
 import { PageHeader } from '../ui'
 import Accounts from './finance/Accounts'
 import Config from './finance/Config'
+import Auslagen from './finance/Expenses'
 import Invoices from './finance/Invoices'
 import Journal, { type JournalPreset } from './finance/Journal'
 import Periods from './finance/Periods'
 import Result from './finance/Result'
 import { isTodo, lineStatus } from './finance/status'
 
-type Tab = 'bank' | 'rechnungen' | 'zeitraeume' | 'konten' | 'ergebnis' | 'konfig'
+type Tab = 'bank' | 'auslagen' | 'rechnungen' | 'zeitraeume' | 'konten' | 'ergebnis' | 'konfig'
 
 export default function Finance() {
   // The tab lives in the address, so coming back from a member file lands on the same tab.
@@ -22,11 +24,12 @@ export default function Finance() {
   const showBookings = (p: { konto?: string; monat?: string }) => setParams({ tab: 'bank', ...(p.konto ? { konto: p.konto } : {}), ...(p.monat ? { monat: p.monat, offen: '1' } : {}) })
 
   const { ledger, can } = useApp()
-  const open = ledger.lines.filter((l) => isTodo(lineStatus(l, ledger))).length
-  const unpaid = ledger.receipts.filter((r) => !r.lineId && !ledger.expenseOf(r.id)).length
+  const open = ledger.lines.filter((l) => l.accountId !== AUSLAGE_ID && isTodo(lineStatus(l, ledger))).length
+  const unpaid = ledger.receipts.filter((r) => !r.lineId && !r.outgoing && !ledger.expenseOf(r.id)).length
   const expenses = ledger.expenses.filter((x) => x.status === 'offen').length
   const all: { id: Tab; label: string; badge?: number; perm?: Permission }[] = [
-    { id: 'bank', label: 'Buchungen', badge: open + (can('billing.bank.manage') ? expenses : 0) },
+    { id: 'bank', label: 'Buchungen', badge: open },
+    { id: 'auslagen', label: 'Auslagen', badge: can('billing.bank.manage') ? expenses : 0 },
     { id: 'rechnungen', label: 'Rechnungen', badge: unpaid },
     { id: 'zeitraeume', label: 'Zeiträume' },
     { id: 'konten', label: 'Betriebskonten', perm: 'billing.accounts.view' },
@@ -45,6 +48,7 @@ export default function Finance() {
         ))}
       </div>
       {tab === 'bank' && <Journal key={`${params.get('konto')}|${params.get('monat')}|${params.get('offen')}|${params.get('beleg')}|${params.get('line')}`} ledger={ledger} preset={{ account: params.get('konto') ?? undefined, month: params.get('monat') ?? undefined, todo: params.get('offen') === '1', proof: (params.get('beleg') as JournalPreset['proof']) ?? undefined, line: params.get('line') ?? undefined }} />}
+      {tab === 'auslagen' && <Auslagen key={params.get('line') ?? ''} ledger={ledger} line={params.get('line') ?? undefined} />}
       {tab === 'rechnungen' && <Invoices ledger={ledger} />}
       {tab === 'zeitraeume' && <Periods ledger={ledger} onShow={(monat) => showBookings({ monat })} />}
       {tab === 'konten' && <Accounts ledger={ledger} />}

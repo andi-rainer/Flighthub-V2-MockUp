@@ -10,7 +10,5 @@ export interface AfpConfig {
   mailPdf: boolean
   /** Final reserve in minutes. */
   reserveMin: number
-  /** Usual flight time to the alternate in minutes: the default of every AFP, the pilot can change it per flight. */
-  alternateMin: number
 }
-export const DEFAULT_AFP_CONFIG: AfpConfig = { enabled: true, evidence: true, mailPdf: true, reserveMin: 30, alternateMin: 10 }
+export const DEFAULT_AFP_CONFIG: AfpConfig = { enabled: true, evidence: true, mailPdf: true, reserveMin: 30 }

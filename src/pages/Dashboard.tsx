@@ -5,7 +5,7 @@ import MemberDocuments from './members/MemberDocuments'
 import { AlertTriangle, ArrowRight, CheckCircle2, Plane } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { aircraft, CASH_ID, eur, members } from '../data'
+import { aircraft, AUSLAGE_ID, CASH_ID, eur, members } from '../data'
 import { flightNo, TODAY_ISO, useApp } from '../state'
 import { useNavigate } from 'react-router-dom'
 import { fmtAbs } from '../dates'
@@ -56,14 +56,14 @@ function Treasurer() {
   const withAccount = members.filter((m) => hasAccount(m.id))
   const toCharge = flights.filter((f) => f.state === 'offen').length
   // The finance inbox, counted the way "Zu bearbeiten" in Finanzen counts: by the status of each booking.
-  const status = ledger.lines.map((l) => lineStatus(l, ledger))
+  const status = ledger.lines.filter((l) => l.accountId !== AUSLAGE_ID).map((l) => lineStatus(l, ledger))
   const openLines = status.filter((x) => x === 'offen').length
   const noReceipt = status.filter((x) => x === 'beleg').length
   const differs = status.filter((x) => x === 'abweichung').length
   const openExpenses = ledger.expenses.filter((x) => x.status === 'offen').length
   const exceptions = ledger.lines.filter((l) => proofOf(l, ledger) === 'ausnahme').length
   const unsigned = status.filter((x) => x === 'unterschrift').length
-  const unpaid = ledger.receipts.filter((r) => !r.lineId && !ledger.expenseOf(r.id))
+  const unpaid = ledger.receipts.filter((r) => !r.lineId && !r.outgoing && !ledger.expenseOf(r.id))
   const overdue = unpaid.filter((r) => r.due && r.due < TODAY_ISO).length
   const minus = withAccount.filter((m) => (ledger.balances[m.id] ?? 0) < 0)
   // Past months that are not released yet; the oldest one is the one to do.
@@ -94,8 +94,8 @@ function Treasurer() {
         {[
           ...(toCheck ? [<Task key="t" to={toCheck[0] ? `/manifest/${toCheck[0].dayId}?pruefen=1` : '/manifest?tab=tage'} n={toCheck.length} label={toCheck.length === 1 ? '1 Tagesabschluss prüfen' : `${toCheck.length} Tagesabschlüsse prüfen`} hint={toCheck.map((r) => `${dmy(r.date).slice(0, 6)} von ${r.by}`).join(', ')} done="Alle Sprungtage festgeschrieben" />] : []),
           <Task key="b" to="/finanzen?tab=bank&offen=1" n={openLines} label="Buchungen zuordnen" hint="Vorschläge und offene Zeilen in allen Konten" />,
-          <Task key="a" to="/finanzen?tab=bank&offen=1" n={openExpenses} label="Auslagen prüfen" hint="Bar-Auslagen von Mitgliedern warten auf deine Prüfung" />,
-          <Task key="e" to="/finanzen?tab=bank&offen=1" n={noReceipt + differs} label="Belege fehlen" hint={`${noReceipt} ohne Rechnung${differs > 0 ? `, ${differs} weichen im Betrag ab` : ''}`} />,
+          <Task key="a" to="/finanzen?tab=auslagen" n={openExpenses} label="Auslagen prüfen" hint="Bar-Auslagen von Mitgliedern warten auf deine Prüfung" />,
+          <Task key="e" to="/finanzen?tab=bank&offen=1" n={noReceipt + differs} label="Rechnungen fehlen" hint={`${noReceipt} ohne Rechnung${differs > 0 ? `, ${differs} weichen im Betrag ab` : ''}`} />,
           <Task key="r" to="/finanzen?tab=rechnungen&status=ohne" n={unpaid.length} label="Rechnungen ohne Abbuchung" hint={`${eur(unpaid.reduce((n, r) => n + r.amount, 0))} warten auf die Bank${overdue > 0 ? `, ${overdue} überfällig` : ''}`} />,
           <Task key="x" to="/finanzen?tab=rechnungen&status=ausnahmen" n={exceptions + unsigned} label="Eigenbelege und Nachreichungen" hint={[unsigned > 0 && `${unsigned} gegenzeichnen`, exceptions > 0 && `${exceptions} Beleg kommt später`].filter(Boolean).join(' · ')} done="Nichts offen" />,
           <Task key="m" to="/finanzen?tab=konten&filter=minus" n={minus.length} label="Mitglieder im Minus" hint={`${eur(minus.reduce((n, m) => n + (ledger.balances[m.id] ?? 0), 0))} offen auf ${minus.length} Betriebskonten`} />,

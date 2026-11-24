@@ -1,6 +1,7 @@
 import { ArrowLeftRight, Download, Lock, Wand2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { eur, type BankLine, type Receipt, type Split } from '../../data'
+import { Link } from 'react-router-dom'
+import { eur, members, type BankLine, type Receipt, type Split } from '../../data'
 import { useSession } from '../../session/session'
 import { Badge, Banner, Button, Drawer, useConfirm } from '../../ui'
 import { dmy } from '../manifest/data'
@@ -9,7 +10,7 @@ import { Assign, SplitsEditor } from './Assign'
 import { ExpenseDrawer } from './Expense'
 import { DayReportDrawer } from './DayReport'
 import LineReceipts from './LineReceipts'
-import { LinePicker } from './ReceiptDialogs'
+import { LinePicker, ReceiptPicker } from './ReceiptDialogs'
 import { monthOf, type Ledger } from './ledger'
 import { confLabel, Dot, monthLabel, openReceiptFile } from './parts'
 import { RuleForm } from './Rules'
@@ -130,13 +131,18 @@ function LineDrawer({ line, ledger, show, onClose }: { line: BankLine; ledger: L
 /** An invoice: its data and file, where it is coded, and the booking that paid it (or the wait for it). */
 function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt; ledger: Ledger; show: (v: View) => void; onClose: () => void }) {
   const cf = useConfirm()
+  const actor = useActor()
   const [picking, setPicking] = useState(false)
+  // With several invoices on the booking, releasing one opens its receipts: the rest must still add up exactly.
+  const [editing, setEditing] = useState(false)
   const [expense, setExpense] = useState(false)
   const dayReport = r.source === 'Kassa' ? ledger.dayReports.find((d) => d.receiptId === r.id) : undefined
   const [report, setReport] = useState(false)
   const line = ledger.lines.find((l) => l.id === r.lineId)
   const locked = !!line && ledger.isLocked(line.date)
   const booked = !!line && !!ledger.done[line.id]
+  // An Auslage handed in and not decided yet: the treasurer codes it in the check, nothing is paid by the club's accounts.
+  const request = !line ? ledger.expenseOf(r.id) : undefined
   const coding = ledger.codingOfReceipt(r)
   const own = r.splits?.[0]
   const set = (p: Partial<Split>) => ledger.patchReceipt(r.id, { splits: [{ costCenterId: own?.costCenterId ?? '', categoryId: own?.categoryId ?? '', percent: 100, ...p }] })
@@ -147,7 +153,7 @@ function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt
 
   return (
     <>
-      <Drawer open={!picking && !expense && !report} title="Rechnung" onClose={onClose} footer={<div className="flex justify-end"><Button onClick={onClose}>Schließen</Button></div>}>
+      <Drawer open={!picking && !editing && !expense && !report} title="Rechnung" onClose={onClose} footer={<div className="flex justify-end"><Button onClick={onClose}>Schließen</Button></div>}>
         <div className="space-y-5 text-sm">
           <div className="rounded-xl bg-slate-50 p-3">
             <div className="flex items-start justify-between gap-3">
@@ -160,7 +166,9 @@ function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt
 
           <div>
             <Head>Kostenstelle</Head>
-            {booked ? (
+            {request ? (
+              <div className="rounded-lg border border-line px-3 py-2 text-muted">{request.status === 'abgelehnt' ? 'Abgelehnt, nicht gebucht.' : 'Wird bei der Prüfung der Auslage gewählt.'}</div>
+            ) : booked ? (
               coding.length > 0
                 ? <ul className="space-y-1">{coding.map((c, i) => <li key={i} className="flex items-center justify-between rounded-lg border border-line px-3 py-2"><span>{name(c.costCenterId)} · {catName(c.categoryId)}</span><span className="tabular-nums text-muted">{eur(c.amount)}</span></li>)}</ul>
                 : <div className="rounded-lg border border-line px-3 py-2 text-muted">Die Buchung ist keiner Kostenstelle zugeordnet.</div>
@@ -179,13 +187,21 @@ function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt
                 {locked && <Lock size={14} className="shrink-0 text-muted" />}
                 <button onClick={() => show({ line: line.id })} className="min-w-0 flex-1 text-left"><span className="block text-xs text-muted">{dmy(line.date)} · {ledger.accountName(line.accountId)}</span><span className="block truncate hover:text-brand">{line.bookingText ?? line.text}</span></button>
                 <span className="font-medium tabular-nums">{eur(line.amount)}</span>
-                {!locked && <button onClick={() => ledger.unlinkReceipt(r.id)} className="text-xs text-muted hover:text-ink">Lösen</button>}
+                {!locked && (receiptsOf(line, ledger).length > 1 || (ledger.diffs[line.id] ?? []).length > 0
+                  ? <button onClick={() => setEditing(true)} className="text-xs text-muted hover:text-ink">Belege ändern</button>
+                  : <button onClick={() => cf.ask({ title: 'Rechnung lösen?', lines: [`${r.supplier}${r.number ? ` · ${r.number}` : ''}: ${eur(r.amount)}`, `von der Buchung „${line.bookingText ?? line.text}“ vom ${dmy(line.date)}`], confirm: 'Lösen', run: () => ledger.setLineReceipts(line.id, [], actor) })} className="text-xs text-muted hover:text-ink">Lösen</button>)}
+              </div>
+            ) : request ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line px-3 py-2">
+                <Badge tone={request.status === 'abgelehnt' ? 'bad' : 'info'}>{request.status === 'abgelehnt' ? 'Auslage abgelehnt' : 'Auslage zur Prüfung'}</Badge>
+                <span className="min-w-0 flex-1 text-xs text-muted">{members.find((m) => m.id === request.memberId)?.name} · eingereicht {dmy(request.submitted)}{request.rejectReason ? ` · ${request.rejectReason}` : ''}</span>
+                <Link to={`/finanzen?tab=auslagen&ansicht=${request.status === 'abgelehnt' ? 'abgelehnt' : 'pruefung'}`} className="text-sm font-medium text-brand hover:underline">Zu den Auslagen</Link>
               </div>
             ) : (
               <div className="space-y-2">
                 <div className="flex items-center gap-2"><Badge tone="warn">Abbuchung offen</Badge>{r.suggestion && <span className="flex items-center gap-1.5 text-xs text-muted"><Dot c={r.suggestion.confidence} />{confLabel(r.suggestion.confidence)} · {r.suggestion.why}</span>}</div>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="primary" onClick={() => setPicking(true)}>{r.suggestion ? 'Bestätigen' : 'Zuordnen'}</Button>
+                  <Button variant="primary" onClick={() => setPicking(true)}>Zuordnen</Button>
                   {!r.suggestion && r.amount > 0 && <Button onClick={() => cf.ask({ title: 'Bar aus der Kassa bezahlt?', lines: [`${r.supplier}${r.number ? ` · ${r.number}` : ''}: ${eur(r.amount)}`, 'Die Kassa wird um den Betrag weniger.'], confirm: `${eur(r.amount)} buchen`, run: () => { ledger.createCashLine(r.id); onClose() } })}>Bar bezahlt (Kassa)</Button>}
                   <Button onClick={() => setExpense(true)}>Privat bezahlt (Auslage)</Button>
                 </div>
@@ -196,6 +212,7 @@ function InvoiceDrawer({ receipt: r, ledger, show, onClose }: { receipt: Receipt
       </Drawer>
       {cf.dialog}
       <LinePicker receipt={picking ? r : null} ledger={ledger} onClose={() => setPicking(false)} />
+      <ReceiptPicker line={editing && line ? line : null} ledger={ledger} onClose={() => setEditing(false)} />
       {expense && <ExpenseDrawer ledger={ledger} from={r} onClose={() => setExpense(false)} />}
       {report && dayReport && <DayReportDrawer report={dayReport} onClose={() => setReport(false)} />}
     </>

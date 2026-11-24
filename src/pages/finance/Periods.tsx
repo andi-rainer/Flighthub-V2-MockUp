@@ -44,7 +44,7 @@ function useChecks(ledger: Ledger) {
       { id: 'zuordnen', label: 'Alle Buchungen zugeordnet', open: st.filter((s) => s === 'offen').length, go: bookings, goLabel: 'Zu den Buchungen' },
       { id: 'beleg', label: 'Jede Buchung mit Rechnung oder Eigenbeleg', open: st.filter((s) => s === 'beleg' || s === 'abweichung' || s === 'ausnahme').length, go: bookings, goLabel: 'Zu den Buchungen' },
       ...(lines.some((l) => ledger.exempt[l.id]?.own) ? [{ id: 'unterschrift', label: 'Eigenbelege mit zwei Unterschriften', open: st.filter((s) => s === 'unterschrift').length, go: () => setParams({ tab: 'rechnungen', status: 'ausnahmen' }), goLabel: 'Zum Gegenzeichnen' }] : []),
-      { id: 'auslagen', label: 'Auslagen entschieden', open: expenses.length, go: () => setParams({ tab: 'bank', offen: '1' }), goLabel: 'Zu den Auslagen' },
+      { id: 'auslagen', label: 'Auslagen entschieden', open: expenses.length, go: () => setParams({ tab: 'auslagen', ansicht: 'pruefung' }), goLabel: 'Zu den Auslagen' },
       { id: 'fluege', label: 'Flüge verrechnet', open: toCharge.length, go: () => navigate('/bordbuch?nur=verrechnen'), goLabel: 'Zum Bordbuch' },
       { id: 'konten', label: 'Kontenabgleich (Soll und Ist je Konto)', open: unchecked.length },
     ]
@@ -144,8 +144,9 @@ function MonthClose({ month, ledger, onClose }: { month: string; ledger: Ledger;
   const rel = ledger.released[month]
   const lines = ledger.lines.filter((l) => monthOf(l.date) === month)
   const invoices = ledger.receipts.filter((r) => lines.some((l) => l.id === r.lineId)).length
-  const exceptions = lines.filter((l) => ledger.done[l.id] && needsProof(l, ledger) && receiptsOf(l, ledger).length === 0 && ownStateOf(l, ledger) !== 'gedeckt')
-  const ownCovered = lines.filter((l) => needsProof(l, ledger) && receiptsOf(l, ledger).length === 0 && ownStateOf(l, ledger) === 'gedeckt').length
+  // Booked but not covered exactly (no or too few documents, a reminder, a missing second signature), the same test as the list.
+  const exceptions = lines.filter((l) => ledger.done[l.id] && ['beleg', 'abweichung', 'ausnahme', 'unterschrift'].includes(lineStatus(l, ledger)))
+  const ownCovered = lines.filter((l) => proofOf(l, ledger) === 'eigenbeleg').length
   const ready = checks.every((c) => c.open === 0)
   const release = () => { guarded('billing.periods.release', () => ledger.release(month, actor)); onClose() }
   const reopen = () => { guarded('billing.periods.release', () => { ledger.reopen(month, actor); x.dropRecons(month) }); onClose() }
@@ -306,7 +307,7 @@ function YearClosing({ ledger, year, picker, onBack, onMonth }: { ledger: Ledger
   const running = Number(year) === thisYear
   const owed = members.filter((m) => (ledger.balances[m.id] ?? 0) < 0).reduce((n, m) => n + ledger.balances[m.id], 0)
   const credit = members.filter((m) => (ledger.balances[m.id] ?? 0) > 0).reduce((n, m) => n + ledger.balances[m.id], 0)
-  const unpaid = ledger.receipts.filter((r) => !r.lineId && !ledger.expenseOf(r.id)).reduce((n, r) => n + r.amount, 0)
+  const unpaid = ledger.receipts.filter((r) => !r.lineId && !r.outgoing && !ledger.expenseOf(r.id)).reduce((n, r) => n + r.amount, 0)
   const csv = () => download(`Einnahmen-Ausgaben-${year}.csv`, [
     ['Einnahmen-Ausgaben-Rechnung', year], [], ['Einnahmen', ''], ...c.income.map((r) => [r.name, r.amount]), ['Summe Einnahmen', c.totalIn], [],
     ['Ausgaben', ''], ...c.cost.map((r) => [r.name, r.amount]), ['Summe Ausgaben', c.totalOut], [], [surplus >= 0 ? 'Überschuss' : 'Fehlbetrag', surplus], [],
@@ -395,9 +396,9 @@ function Audit({ ledger, year, picker, onBack }: { ledger: Ledger; year: string;
   const [sure, setSure] = useState(false)
   const lines = ledger.lines.filter((l) => l.date.startsWith(year))
   const name = (id: string) => ledger.lines.find((l) => l.id === id)
-  const bare = lines.filter((l) => needsProof(l, ledger) && ledger.done[l.id] && receiptsOf(l, ledger).length === 0).sort((a, b) => b.date.localeCompare(a.date))
-  const missing = bare.filter((l) => ownStateOf(l, ledger) !== 'gedeckt').map((l) => ({ l, e: ledger.exempt[l.id] }))
-  const owned = bare.filter((l) => ownStateOf(l, ledger) === 'gedeckt')
+  const newest = (a: BankLine, b: BankLine) => b.date.localeCompare(a.date)
+  const missing = lines.filter((l) => ledger.done[l.id] && ['beleg', 'abweichung', 'ausnahme', 'unterschrift'].includes(lineStatus(l, ledger))).sort(newest).map((l) => ({ l, e: ledger.exempt[l.id] }))
+  const owned = lines.filter((l) => proofOf(l, ledger) === 'eigenbeleg').sort(newest)
   const changes = Object.entries(ledger.log).flatMap(([id, es]) => { const l = name(id); return l && l.date.startsWith(year) ? es.map((e) => ({ l, e })) : [] }).sort((a, b) => b.e.at.localeCompare(a.e.at))
   const months = monthsOf(year).filter((m) => m <= thisMonth)
   const signed = x.audits.filter((a) => a.year === year)

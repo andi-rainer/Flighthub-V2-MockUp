@@ -1,9 +1,9 @@
 import clsx from 'clsx'
-import { ArrowLeftRight, ChevronRight, FilePlus2, Lock, Sparkles, Wand2 } from 'lucide-react'
+import { ArrowLeftRight, Check, ChevronRight, FilePlus2, Lock, Sparkles, Wand2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { eur, members, type BankLine } from '../../data'
-import { Badge, Button, Card, Drawer, FilePick, Segmented, SplitButton, usePaging, type PickedFile } from '../../ui'
+import { AUSLAGE_ID, eur, members, type BankLine } from '../../data'
+import { Button, Card, Drawer, FilePick, Segmented, SplitButton, usePaging, type PickedFile } from '../../ui'
 import { TODAY_ISO, useApp } from '../../state'
 import { Provisional, useProvisionalCash } from '../manifest/closingPreview'
 import { dmy } from '../manifest/data'
@@ -11,47 +11,42 @@ import { Field, field } from '../tickets/parts'
 import AccountStrip, { Transfer } from './AccountStrip'
 import AwaitingMoney from './AwaitingMoney'
 import { useDetail } from './Details'
-import { ExpenseDrawer } from './Expense'
-import ExpenseQueue from './Expenses'
 import { amountOk, codingOk, FilterBar, inRange, isFiltered, NO_FILTERS, textOk, type Filters } from './filters'
-import { type Ledger } from './ledger'
+import { DIFF_LABEL, type Ledger } from './ledger'
 import { cents, confLabel, Dot, SAFE } from './parts'
 import { ReceiptForm, useCountersign } from './ReceiptDialogs'
 import { RulesDrawer } from './Rules'
 import { suggestionOf, useRules, type Rule } from './ruleStore'
-import { counterCandidates, counterOf, isTodo, isInternal, LATER, lineStatus, needsProof, ownStateOf, PROOF, proofOf, receiptsOf, STATUS, type LineStatus, type Proof } from './status'
+import { counterCandidates, counterOf, gapsOf, isTodo, LATER, lineStatus, needsProof, ownDocsOf, ownStateOf, PROOF, proofOf, receiptsOf, STATEMENT, type Proof } from './status'
 
 type View = 'alle' | 'bearbeiten'
 /** What the tab opens with when another tab sends the person here (an account, a month with open items, a kind of proof). */
 export interface JournalPreset { account?: string; month?: string; todo?: boolean; proof?: Proof; /** Open this booking at once (a link from a Betriebskonto, an invoice). */ line?: string }
 
 const COLS = 'md:grid-cols-[5.5rem_minmax(0,1.5fr)_minmax(0,1.2fr)_minmax(0,1.4fr)_6.5rem_8.5rem]'
-const EDGE: Record<LineStatus, string> = {
-  offen: 'border-l-warn', beleg: 'border-l-warn/50', abweichung: 'border-l-warn/50', unterschrift: 'border-l-warn/50', eigenbeleg: 'border-l-transparent', ausnahme: 'border-l-warn/50', gebucht: 'border-l-transparent', gesperrt: 'border-l-slate-200 bg-slate-50/70',
-}
 const monthRange = (m: string) => ({ from: `${m}-01`, to: `${m}-${String(new Date(Number(m.slice(0, 4)), Number(m.slice(5)), 0).getDate()).padStart(2, '0')}` })
 
 /**
- * Every booking of every account, newest first. What is still to do shows at a glance (amber edge, status, button); "Zu bearbeiten" is the
- * quick view of exactly those, plus the other open points of the treasurer as counted links. A booked line can still change (cost center,
- * text) until its period is released.
+ * Every booking of every account, newest first. A booking is a fact and needs no confirmation, only its connections: an assignment and
+ * (with few exceptions) invoices that cover it. The left edge shows where it stands: amber while something is missing (the status names
+ * it), green when it is done. A click opens it (an unassigned one straight in the assignment). "Zu bearbeiten" is the quick view of the
+ * incomplete ones, plus the other open points of the treasurer as counted links. A booking can still change until its period is released.
+ * Auslagen of members have their own tab.
  */
 export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: JournalPreset }) {
-  const { can } = useApp()
   const rules = useRules()
-  const reviewExpenses = can('billing.bank.manage')
+  const bookings = ledger.lines.filter((l) => l.accountId !== AUSLAGE_ID)
   // Opens on what is to do; with nothing to do it opens on everything.
-  const [view, setView] = useState<View>(() => (preset?.proof ? 'alle' : preset?.todo || ledger.lines.some((l) => isTodo(lineStatus(l, ledger))) || (reviewExpenses && ledger.expenses.some((x) => x.status === 'offen')) ? 'bearbeiten' : 'alle'))
+  const [view, setView] = useState<View>(() => (preset?.proof ? 'alle' : preset?.todo || bookings.some((l) => isTodo(lineStatus(l, ledger))) ? 'bearbeiten' : 'alle'))
   const [f, setF] = useState<Filters>({ ...NO_FILTERS, account: preset?.account ?? '', ...(preset?.month ? monthRange(preset.month) : {}) })
   const [proof, setProof] = useState<Proof | ''>(preset?.proof ?? '')
-  const [creating, setCreating] = useState<null | 'receipt' | 'line' | 'transfer' | 'expense' | 'import' | 'rules'>(null)
+  const [creating, setCreating] = useState<null | 'receipt' | 'line' | 'transfer' | 'import' | 'rules'>(null)
   const [bulk, setBulk] = useState(false)
   const { show, node } = useDetail(ledger)
   // A link to one booking opens it once; closing it leaves the list.
   useEffect(() => { if (preset?.line) show({ line: preset.line }) }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  const expensesOpen = reviewExpenses ? ledger.expenses.filter((x) => x.status === 'offen').length : 0
 
-  const items = ledger.lines.map((l) => ({ l, status: lineStatus(l, ledger) }))
+  const items = bookings.map((l) => ({ l, status: lineStatus(l, ledger) }))
   const todo = items.filter((i) => isTodo(i.status))
   const safe = todo.flatMap((i) => {
     const s = i.status === 'offen' ? suggestionOf(i.l, ledger, rules) : undefined
@@ -67,16 +62,15 @@ export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: J
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Segmented<View> value={view} onChange={setView} options={[{ value: 'alle', label: `Alle (${items.length})` }, { value: 'bearbeiten', label: `Zu bearbeiten (${todo.length + expensesOpen})` }]} />
+        <Segmented<View> value={view} onChange={setView} options={[{ value: 'alle', label: `Alle (${items.length})` }, { value: 'bearbeiten', label: `Zu bearbeiten (${todo.length})` }]} />
         <div className="flex flex-wrap gap-2">
           <SplitButton onClick={() => setCreating('line')} actions={[
-            { label: 'Auslage erfassen', onSelect: () => setCreating('expense') },
             { label: 'Umbuchung', onSelect: () => setCreating('transfer') },
             { label: 'Kontoauszug importieren', onSelect: () => setCreating('import') },
           ]}>Buchung erfassen</SplitButton>
           <Button onClick={() => setCreating('receipt')}><FilePlus2 size={16} /> Beleg erstellen</Button>
           <Button onClick={() => setCreating('rules')}><Wand2 size={16} /> Regeln</Button>
-          {view === 'bearbeiten' && <Button variant="primary" disabled={safe.length === 0} onClick={() => setBulk(true)}>{safe.length} sichere prüfen</Button>}
+          {view === 'bearbeiten' && safe.length > 0 && <Button onClick={() => setBulk(true)}><Sparkles size={16} /> {safe.length} Vorschläge übernehmen</Button>}
         </div>
       </div>
 
@@ -88,16 +82,15 @@ export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: J
         </select>
       </FilterBar>
       {view === 'bearbeiten' && <MoreTodo ledger={ledger} />}
-      {view === 'bearbeiten' && reviewExpenses && <ExpenseQueue ledger={ledger} />}
       {view === 'bearbeiten' && <AwaitingMoney />}
 
       <Card className="overflow-hidden">
-        <div className={clsx('hidden gap-x-3 border-b border-line bg-slate-50 px-3 py-2 pl-[calc(0.75rem+4px)] text-xs font-medium uppercase tracking-wide text-muted md:grid', COLS)}>
-          <span>Datum</span><span>Buchung</span><span>Rechnung</span><span>Kostenstelle · Kostenart</span><span className="text-right">Betrag</span><span>Status</span>
+        <div className={clsx('hidden gap-x-3 border-b border-line bg-slate-50 px-3 py-2 pl-[calc(0.75rem+3px)] text-xs font-medium uppercase tracking-wide text-muted md:grid', COLS)}>
+          <span>Datum</span><span>Buchung</span><span>Beleg</span><span>Kostenstelle · Kostenart</span><span className="text-right">Betrag</span><span>Status</span>
         </div>
         <div className="divide-y divide-line">
-          {paging.rows.map(({ l, status }) => (
-            <Line key={l.id} line={l} status={status} ledger={ledger} rules={rules} onOpen={() => show({ line: l.id })} onAssign={() => show({ assign: l.id })} onInvoice={(id) => show({ invoice: id })} onLine={(id) => show({ line: id })} />
+          {paging.rows.map(({ l }) => (
+            <Line key={l.id} line={l} ledger={ledger} rules={rules} onOpen={() => show({ line: l.id })} onInvoice={(id) => show({ invoice: id })} onLine={(id) => show({ line: id })} />
           ))}
           {shown.length === 0 && <p className="p-6 text-center text-sm text-muted">{view === 'bearbeiten' && !isFiltered(f) && !proof ? 'Alles zugeordnet.' : 'Keine Buchungen für diese Auswahl.'}</p>}
         </div>
@@ -111,7 +104,6 @@ export default function Journal({ ledger, preset }: { ledger: Ledger; preset?: J
       </Card>
 
       {creating === 'receipt' && <ReceiptForm ledger={ledger} onClose={() => setCreating(null)} />}
-      {creating === 'expense' && <ExpenseDrawer ledger={ledger} onClose={() => setCreating(null)} />}
       {creating === 'transfer' && <Transfer ledger={ledger} onClose={() => setCreating(null)} />}
       {creating === 'line' && <NewLine ledger={ledger} account={f.account} onClose={() => setCreating(null)} />}
       {creating === 'import' && <ImportStatement ledger={ledger} account={f.account} onClose={() => setCreating(null)} />}
@@ -135,12 +127,14 @@ function haystack(l: BankLine, ledger: Ledger) {
  */
 function MoreTodo({ ledger }: { ledger: Ledger }) {
   const { can, flights, hasAccount } = useApp()
-  const unpaid = ledger.receipts.filter((r) => !r.lineId && !ledger.expenseOf(r.id))
+  const unpaid = ledger.receipts.filter((r) => !r.lineId && !r.outgoing && !ledger.expenseOf(r.id))
   const minus = members.filter((m) => hasAccount(m.id) && (ledger.balances[m.id] ?? m.balance) < 0)
   const toCharge = flights.filter((x) => x.state === 'offen')
   const mayCountersign = useCountersign()
   const toSign = ledger.lines.filter((l) => proofOf(l, ledger) === 'unterschrift' && mayCountersign(ledger.exempt[l.id]))
+  const expenses = can('billing.bank.manage') ? ledger.expenses.filter((x) => x.status === 'offen') : []
   const links: { label: string; hint: string; to?: string; onClick?: () => void }[] = [
+    ...(expenses.length ? [{ label: `${expenses.length} Auslagen zur Prüfung`, hint: eur(expenses.reduce((n, x) => n + (ledger.receipts.find((r) => r.id === x.receiptId)?.amount ?? x.own?.doc.amount ?? 0), 0)), to: '/finanzen?tab=auslagen' }] : []),
     ...(unpaid.length ? [{ label: `${unpaid.length} Rechnungen ohne Zahlung`, hint: eur(unpaid.reduce((n, r) => n + r.amount, 0)), to: '/finanzen?tab=rechnungen&status=ohne' }] : []),
     ...(minus.length && can('billing.accounts.view') ? [{ label: `${minus.length} Mitglieder im Minus`, hint: eur(minus.reduce((n, m) => n + (ledger.balances[m.id] ?? m.balance), 0)), to: '/finanzen?tab=konten&filter=minus' }] : []),
     ...(toCharge.length && can('billing.flights.charge') ? [{ label: `${toCharge.length} Flüge zu verrechnen`, hint: eur(toCharge.reduce((n, x) => n + x.amount, 0)), to: '/bordbuch?nur=verrechnen' }] : []),
@@ -159,7 +153,16 @@ function MoreTodo({ ledger }: { ledger: Ledger }) {
   )
 }
 
-function Line({ line: l, status, ledger, rules, onOpen, onAssign, onInvoice, onLine }: { line: BankLine; status: LineStatus; ledger: Ledger; rules: Rule[]; onOpen: () => void; onAssign: () => void; onInvoice: (id: string) => void; onLine: (id: string) => void }) {
+/** The left edge of a booking: amber while a connection is missing, green when it is done; a released period greys the row. */
+export const edgeOf = (gaps: string[], locked: boolean) => clsx('border-l-[3px]', gaps.length ? 'border-l-amber-400' : 'border-l-green-600', locked && 'bg-slate-50/70')
+
+/** What a booking still misses, or that it is done (with a lock once its period is released). */
+export function GapsText({ gaps, locked }: { gaps: string[]; locked: boolean }) {
+  if (gaps.length) return <span className="text-xs font-medium leading-snug text-amber-900">Fehlt: {gaps.join(' · ')}</span>
+  return <span className="inline-flex items-center gap-1 text-xs font-medium text-ok">{locked ? <Lock size={12} /> : <Check size={12} />}Fertig</span>
+}
+
+function Line({ line: l, ledger, rules, onOpen, onInvoice, onLine }: { line: BankLine; ledger: Ledger; rules: Rule[]; onOpen: () => void; onInvoice: (id: string) => void; onLine: (id: string) => void }) {
   const target = ledger.done[l.id]
   const s = target ? undefined : suggestionOf(l, ledger, rules)
   const rs = receiptsOf(l, ledger)
@@ -167,12 +170,14 @@ function Line({ line: l, status, ledger, rules, onOpen, onAssign, onInvoice, onL
   const own = ownStateOf(l, ledger)
   const counter = counterOf(l, ledger)
   const counterAt = !target && s?.target.kind === 'umbuchung' ? counterCandidates(l, s.target.accountId, ledger)[0] : undefined
-  const proposed = !target && rs.length === 0 ? ledger.receipts.find((r) => !r.lineId && r.suggestion?.lineId === l.id) : undefined
+  const proposed = rs.length === 0 ? ledger.receipts.find((r) => !r.lineId && r.suggestion?.lineId === l.id) : undefined
+  const gaps = gapsOf(l, ledger)
+  const locked = ledger.isLocked(l.date)
   const stop = (fn: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); fn() }
   const provisional = useProvisionalCash()(l)
   return (
     <div role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => e.key === 'Enter' && onOpen()}
-      className={clsx('grid cursor-pointer gap-x-3 gap-y-1 border-l-4 px-3 py-2 hover:bg-slate-50 md:items-center', COLS, EDGE[status])}>
+      className={clsx('grid cursor-pointer gap-x-3 gap-y-1 px-3 py-2 hover:bg-slate-50 md:items-center', COLS, edgeOf(gaps, locked))}>
       <div className="text-xs text-muted">{dmy(l.date)}</div>
 
       <div className="min-w-0">
@@ -188,24 +193,22 @@ function Line({ line: l, status, ledger, rules, onOpen, onAssign, onInvoice, onL
         {proposed && <button onClick={stop(() => onInvoice(proposed.id))} title="Vorgeschlagene Rechnung" className="max-w-[11rem] truncate rounded-full border border-dashed border-ok/60 px-2 py-px text-[11px] font-medium text-ok hover:underline">{proposed.supplier}{proposed.number ? ` ${proposed.number}` : ''}?</button>}
         {counter && <button onClick={stop(() => onLine(counter.id))} title="Gegenbuchung öffnen" className="inline-flex max-w-[11rem] items-center gap-1 truncate rounded-full bg-slate-100 px-2 py-px text-[11px] font-medium text-ink hover:underline"><ArrowLeftRight size={11} />{ledger.accountName(counter.accountId)}</button>}
         {counterAt && <span title="Gegenbuchung schon erfasst" className="inline-flex items-center gap-1 rounded-full border border-dashed border-line px-2 py-px text-[11px] text-muted"><ArrowLeftRight size={11} />{ledger.accountName(counterAt.accountId)} {dmy(counterAt.date)}</span>}
-        {rs.length === 0 && target && (needsProof(l, ledger)
-          ? <span className={clsx('rounded-full px-2 py-px text-[11px] font-medium', own === 'gedeckt' ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-amber-900')}>{ex ? (ex.own ? `Eigenbeleg ${ex.own.no}` : ex.reason === LATER ? LATER : 'Beleg fehlt') : 'Beleg fehlt'}</span>
-          : isInternal(l, ledger) && <span className="rounded-full bg-slate-100 px-2 py-px text-[11px] text-muted">Kein Beleg nötig</span>)}
+        {ownDocsOf(l, ledger).filter((d) => d.kind !== 'gegenbuchung').map((d) => <span key={d.label} title={`${d.label} · von uns ausgestellt`} className="max-w-[11rem] truncate rounded-full bg-slate-100 px-2 py-px text-[11px] font-medium text-ink">{d.code ?? d.label}</span>)}
+        {(ledger.diffs[l.id] ?? []).map((d, i) => <span key={`d${i}`} title={d.reason} className="rounded-full border border-dashed border-line px-2 py-px text-[11px] text-muted">{DIFF_LABEL[d.kind]}</span>)}
+        {rs.length === 0 && !proposed && needsProof(l, ledger) && (ex?.reason === STATEMENT
+          ? <span className="rounded-full bg-slate-100 px-2 py-px text-[11px] font-medium text-ink">Kontoauszug</span>
+          : <span className={clsx('rounded-full px-2 py-px text-[11px] font-medium', own === 'gedeckt' ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-amber-900')}>{ex?.own ? `Eigenbeleg ${ex.own.no}` : ex?.reason === LATER ? 'kommt später' : 'fehlt'}</span>)}
       </div>
 
       <div className="min-w-0 text-sm">
         {target ? <div className="truncate" title={ledger.label(target)}>{ledger.label(target)}</div>
           : s ? <div className="flex items-center gap-1.5 text-muted" title={s.why}><Dot c={s.confidence} /><span className="truncate">{ledger.label(s.target)}<span className="text-xs"> · {s.rule ? 'Regel' : confLabel(s.confidence)}</span></span></div>
-          : <div className="text-warn">Kein Vorschlag</div>}
+          : <div className="text-muted">Kein Vorschlag</div>}
       </div>
 
       <div className={clsx('text-sm font-semibold tabular-nums md:text-right', l.amount < 0 ? 'text-bad' : 'text-ok')}>{eur(l.amount)}</div>
 
-      <div className="md:flex md:justify-start">
-        {status === 'offen'
-          ? <Button variant="primary" onClick={stop(onAssign)}>{s ? 'Bestätigen' : 'Zuordnen'}</Button>
-          : <Badge tone={STATUS[status].tone}>{status === 'gesperrt' && <Lock size={11} className="mr-1" />}{STATUS[status].label}</Badge>}
-      </div>
+      <div className="min-w-0"><GapsText gaps={gaps} locked={locked} /></div>
     </div>
   )
 }
@@ -289,12 +292,12 @@ function BulkConfirm({ items, ledger, onEdit, onClose }: { items: { line: BankLi
     onClose()
   }
   return (
-    <Drawer open title="Sichere Vorschläge prüfen" onClose={onClose}
-      footer={<Button variant="primary" size="lg" className="w-full" disabled={picked.length === 0} onClick={confirm}>{picked.length} von {items.length} bestätigen</Button>}>
+    <Drawer open title="Vorschläge übernehmen" onClose={onClose}
+      footer={<Button variant="primary" size="lg" className="w-full" disabled={picked.length === 0} onClick={confirm}>{picked.length} von {items.length} zuordnen</Button>}>
       <div className="divide-y divide-line rounded-xl border border-line text-sm">
         {items.map(({ line: l, target }) => (
           <div key={l.id} className={clsx('flex items-center gap-3 px-3 py-2', off.includes(l.id) && 'bg-slate-50 opacity-60')}>
-            <input type="checkbox" aria-label={`${l.text} bestätigen`} checked={!off.includes(l.id)} onChange={() => toggle(l.id)} />
+            <input type="checkbox" aria-label={`${l.text} zuordnen`} checked={!off.includes(l.id)} onChange={() => toggle(l.id)} />
             <div className="min-w-0 flex-1"><div className="font-medium leading-snug">{l.text}</div><div className="text-xs text-muted">{dmy(l.date)} · {ledger.label(target)}</div></div>
             <div className={clsx('shrink-0 font-semibold tabular-nums', l.amount < 0 ? 'text-bad' : 'text-ok')}>{eur(l.amount)}</div>
             <Button onClick={() => onEdit(l.id)}>Ändern</Button>

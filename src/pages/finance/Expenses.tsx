@@ -1,54 +1,124 @@
-import { useState } from 'react'
-import { eur, members } from '../../data'
+import clsx from 'clsx'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { AUSLAGE_ID, eur, members, type BankLine } from '../../data'
 import MemberPicker from '../../MemberPicker'
 import { useApp } from '../../state'
 import { useSession } from '../../session/session'
-import { Badge, Button, Card, Drawer, usePaging } from '../../ui'
+import { Badge, Button, Card, Drawer, Segmented, usePaging } from '../../ui'
 import { dmy } from '../manifest/data'
 import { Field, field, useActor } from '../tickets/parts'
 import { captureOf, captureProblem, EMPTY_CAPTURE, ReceiptCapture, toNewReceipt, type Captured } from './capture'
+import { useDetail } from './Details'
+import { ExpenseDrawer } from './Expense'
+import { edgeOf, GapsText } from './Journal'
 import { type ExpenseRequest, type Ledger } from './ledger'
 import { openReceiptFile, perLiter } from './parts'
 import { OwnReceiptDoc } from './ReceiptDialogs'
+import { gapsOf, receiptsOf } from './status'
 
 const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? '?'
+type View = 'pruefung' | 'gebucht' | 'abgelehnt'
+const COLS = 'md:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_minmax(0,1.3fr)_6.5rem_8.5rem]'
+const chip = 'max-w-[11rem] truncate rounded-full px-2 py-px text-[11px] font-medium hover:underline'
+/** The text of a credited Auslage without the "Auslage Name:" the booking carries. */
+const whatOf = (l: BankLine) => l.bookingText ?? l.text.replace(/^Auslage [^:]+: /, '')
 
 /**
- * Cash expenses of members waiting for the treasurer, shown in the bookings under "Zu bearbeiten". Nothing is credited before the check,
- * fuel included. Credited ones are in the bookings (card "Auslagen"); rejected ones can be shown here.
+ * [Entwurf] Auslagen: what members paid privately for the club, apart from the bookings of the money accounts. "Zur Prüfung": handed in,
+ * nothing booked or credited yet, fuel included. "Gebucht": credited to the Betriebskonto and booked on cost centers exactly as if the club
+ * had paid itself, so the cost figures stay right; the invoice is linked and listed under Rechnungen like any other. "Abgelehnt" with the
+ * reason the member sees.
  */
-export default function ExpenseQueue({ ledger }: { ledger: Ledger }) {
-  const [open, setOpen] = useState<ExpenseRequest | null>(null)
-  const [rejected, setRejected] = useState(false)
+export default function Auslagen({ ledger, line }: { ledger: Ledger; line?: string }) {
+  const { can } = useApp()
+  const mayReview = can('billing.bank.manage')
+  const [params, setParams] = useSearchParams()
   const pending = ledger.expenses.filter((x) => x.status === 'offen')
   const turnedDown = ledger.expenses.filter((x) => x.status === 'abgelehnt')
-  const rows = rejected ? [...pending, ...turnedDown] : pending
-  const paging = usePaging(rows, String(rejected), [10, 25])
-  if (pending.length === 0 && turnedDown.length === 0) return null
+  const booked = ledger.lines.filter((l) => l.accountId === AUSLAGE_ID).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+  const view = (params.get('ansicht') as View) || (pending.length ? 'pruefung' : 'gebucht')
+  const setView = (v: View) => setParams((p) => { const n = new URLSearchParams(p); n.set('ansicht', v); n.delete('line'); return n }, { replace: true })
+  const [open, setOpen] = useState<ExpenseRequest | null>(null)
+  const [creating, setCreating] = useState(false)
+  const { show, node } = useDetail(ledger)
+  // A link to one Auslage (from a Betriebskonto) opens it once.
+  useEffect(() => { if (line) show({ line }) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const requests = view === 'abgelehnt' ? turnedDown : pending
+  const reqPaging = usePaging(requests, view)
+  const bookPaging = usePaging(booked, view)
+  const amountOf = (x: ExpenseRequest) => ledger.receipts.find((r) => r.id === x.receiptId)?.amount ?? x.own?.doc.amount ?? 0
+  const total = view === 'gebucht' ? -booked.reduce((n, l) => n + l.amount, 0) : requests.reduce((n, x) => n + amountOf(x), 0)
+  const count = view === 'gebucht' ? booked.length : requests.length
+
   return (
-    <>
-      <Card className="divide-y divide-line">
-        <div className="flex items-center justify-between px-4 py-2 text-sm font-semibold">
-          <span>Auslagen zur Prüfung · {pending.length}</span>
-          {turnedDown.length > 0 && <button onClick={() => setRejected(!rejected)} className="text-xs font-normal text-brand">{rejected ? 'Abgelehnte ausblenden' : `${turnedDown.length} abgelehnte anzeigen`}</button>}
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Segmented<View> value={view} onChange={setView} options={[
+          { value: 'pruefung', label: `Zur Prüfung (${pending.length})` },
+          { value: 'gebucht', label: `Gebucht (${booked.length})` },
+          ...(turnedDown.length ? [{ value: 'abgelehnt' as View, label: `Abgelehnt (${turnedDown.length})` }] : []),
+        ]} />
+        <Button onClick={() => setCreating(true)}>Auslage erfassen</Button>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className={clsx('hidden gap-x-3 border-b border-line bg-slate-50 px-3 py-2 pl-[calc(0.75rem+3px)] text-xs font-medium uppercase tracking-wide text-muted md:grid', COLS)}>
+          <span>{view === 'gebucht' ? 'Datum' : 'Eingereicht'}</span><span>Mitglied</span><span>Was</span><span>Rechnung</span><span>{view === 'abgelehnt' ? 'Grund' : 'Kostenstelle · Kostenart'}</span><span className="text-right">Betrag</span><span>Status</span>
         </div>
-        {paging.rows.map((x) => {
-          const r = ledger.receipts.find((y) => y.id === x.receiptId)
-          return (
-            <div key={x.id} className={`flex flex-wrap items-center gap-x-4 gap-y-1 border-l-4 px-4 py-2.5 text-sm ${x.status === 'offen' ? 'border-l-warn' : 'border-l-transparent opacity-70'}`}>
-              <div className="w-24 text-xs text-muted">{dmy(x.submitted)}</div>
-              <div className="w-36 truncate font-medium">{nameOf(x.memberId)}</div>
-              <div className="min-w-0 flex-1 basis-48"><div className="truncate">{x.description}</div><div className="truncate text-xs text-muted">{x.own ? `Eigenbeleg ${x.own.doc.no} · ${x.own.reason}` : <>{r?.supplier}{r?.number ? ` · ${r.number}` : ''}{r?.fuel ? ` · ${r.fuel.liters} L · ${perLiter(r.fuel.perLiter)}` : ''}</>}</div></div>
-              <Badge>{x.origin}</Badge>
-              <div className="w-24 text-right font-semibold tabular-nums">{r ? eur(r.amount) : x.own ? eur(x.own.doc.amount) : ''}</div>
-              {x.status === 'offen' ? <Button variant="primary" onClick={() => setOpen(x)}>Prüfen</Button> : <span title={x.rejectReason}><Badge tone="bad">Abgelehnt</Badge></span>}
-            </div>
-          )
-        })}
-        {rows.length > 10 && paging.bar}
+        <div className="divide-y divide-line">
+          {view === 'gebucht' ? bookPaging.rows.map((l) => {
+            const t = ledger.done[l.id]
+            const rs = receiptsOf(l, ledger)
+            const own = ledger.exempt[l.id]?.own
+            const locked = ledger.isLocked(l.date)
+            const coding = ledger.codingOfLine(l).map((c) => `${ledger.costCenters.find((x) => x.id === c.costCenterId)?.name ?? '?'} · ${ledger.categories.find((x) => x.id === c.categoryId)?.name ?? '?'}`).join(', ')
+            return (
+              <div key={l.id} role="button" tabIndex={0} onClick={() => show({ line: l.id })} onKeyDown={(e) => e.key === 'Enter' && show({ line: l.id })} className={clsx('grid cursor-pointer gap-x-3 gap-y-1 px-3 py-2 text-sm hover:bg-slate-50 md:items-center', COLS, edgeOf(gapsOf(l, ledger), locked))}>
+                <div className="text-xs text-muted">{dmy(l.date)}</div>
+                <div className="truncate font-medium">{t?.kind === 'auslage' ? nameOf(t.memberId) : '?'}</div>
+                <div className="truncate">{whatOf(l)}</div>
+                <div className="flex min-w-0 flex-wrap gap-1">
+                  {rs.map((r) => <button key={r.id} onClick={(e) => { e.stopPropagation(); show({ invoice: r.id }) }} className={clsx(chip, 'bg-ok-soft text-ok')}>{r.supplier}{r.number ? ` ${r.number}` : ''}</button>)}
+                  {rs.length === 0 && own && <span className={clsx(chip, 'bg-ok-soft text-ok hover:no-underline')}>Eigenbeleg {own.no}</span>}
+                </div>
+                <div className="truncate" title={coding}>{coding}</div>
+                <div className="font-semibold tabular-nums md:text-right">{eur(-l.amount)}</div>
+                <div className="min-w-0"><GapsText gaps={gapsOf(l, ledger)} locked={locked} /></div>
+              </div>
+            )
+          }) : reqPaging.rows.map((x) => {
+            const r = ledger.receipts.find((y) => y.id === x.receiptId)
+            const pendingRow = x.status === 'offen'
+            const canOpen = pendingRow && mayReview
+            return (
+              <div key={x.id} role={canOpen ? 'button' : undefined} tabIndex={canOpen ? 0 : undefined} onClick={canOpen ? () => setOpen(x) : undefined} onKeyDown={canOpen ? (e) => e.key === 'Enter' && setOpen(x) : undefined}
+                className={clsx('grid gap-x-3 gap-y-1 border-l-[3px] px-3 py-2 text-sm md:items-center', COLS, pendingRow ? 'border-l-amber-400' : 'border-l-transparent', canOpen && 'cursor-pointer hover:bg-slate-50')}>
+                <div className="text-xs text-muted">{dmy(x.submitted)}</div>
+                <div className="truncate font-medium">{nameOf(x.memberId)}</div>
+                <div className="min-w-0"><div className="truncate">{x.description}</div><div className="truncate text-xs text-muted">{x.origin}{r?.fuel ? ` · ${r.fuel.liters} L · ${perLiter(r.fuel.perLiter)}` : ''}</div></div>
+                <div className="flex min-w-0 flex-wrap gap-1">
+                  {r && <button onClick={(e) => { e.stopPropagation(); show({ invoice: r.id }) }} className={clsx(chip, 'bg-slate-100 text-ink')}>{r.supplier}{r.number ? ` ${r.number}` : ''}</button>}
+                  {x.own && <span className={clsx(chip, 'bg-slate-100 text-ink hover:no-underline')}>Eigenbeleg {x.own.doc.no}</span>}
+                </div>
+                <div className="truncate text-muted">{pendingRow ? (x.suggested ? `Vorschlag: ${ledger.costCenters.find((c) => c.id === x.suggested!.costCenterId)?.name ?? '?'}` : 'bei der Prüfung') : x.rejectReason}</div>
+                <div className="font-semibold tabular-nums md:text-right">{eur(amountOf(x))}</div>
+                <div>{pendingRow ? (mayReview ? <Button onClick={(e) => { e.stopPropagation(); setOpen(x) }}>Prüfen</Button> : <span className="text-xs font-medium text-amber-900">Wartet auf Prüfung</span>) : <span className="text-xs text-muted">Abgelehnt{x.decidedBy ? ` von ${x.decidedBy}` : ''}</span>}</div>
+              </div>
+            )
+          })}
+          {count === 0 && <p className="p-6 text-center text-sm text-muted">{view === 'pruefung' ? 'Keine Auslagen zur Prüfung.' : view === 'gebucht' ? 'Noch keine Auslagen gebucht.' : 'Keine abgelehnten Auslagen.'}</p>}
+        </div>
+        {count > 10 && (view === 'gebucht' ? bookPaging.bar : reqPaging.bar)}
+        <div className="flex flex-wrap items-center justify-end gap-x-5 border-t border-line bg-slate-50 px-4 py-2 text-xs text-muted">
+          <span>{count} Auslagen</span><span>Summe <b className="tabular-nums text-ink">{eur(total)}</b></span>
+        </div>
       </Card>
+
       {open && <Review key={open.id} request={open} ledger={ledger} onClose={() => setOpen(null)} />}
-    </>
+      {creating && <ExpenseDrawer ledger={ledger} onClose={() => setCreating(false)} />}
+      {node}
+    </div>
   )
 }
 

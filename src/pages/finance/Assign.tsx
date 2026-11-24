@@ -88,7 +88,9 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
   const fromReceipts = () => setDrafts(lineReceipts.map((r) => draftOf(undefined, euros(Math.round(r.amount * 100)), r.id)).map((d) => ({ ...d, mode: 'buchung' as const })))
 
   return (
-    <Drawer open={!hidden} title={suggestion ? 'Vorschlag prüfen' : 'Zuordnen'} size={single ? 'md' : 'xl'} onClose={onClose} footer={<Button variant="primary" size="lg" className="w-full" disabled={!valid} onClick={book}>{transfer ? (transfer.counterId ? 'Umbuchung verknüpfen und buchen' : 'Umbuchung mit Gegenbuchung buchen') : suggestion ? 'Bestätigen und buchen' : 'Zuordnen und buchen'}</Button>}>
+    // Hidden, not closed, while a receipt dialog covers it: a closed Drawer drops its content, and the dialog with it.
+    <div className={hidden ? 'hidden' : undefined}>
+    <Drawer open title="Zuordnen" size={single ? 'md' : 'xl'} onClose={onClose} footer={<Button variant="primary" size="lg" className="w-full" disabled={!valid} onClick={book}>{transfer ? (transfer.counterId ? 'Umbuchung verknüpfen und buchen' : 'Umbuchung mit Gegenbuchung buchen') : 'Zuordnen'}</Button>}>
       <div className="space-y-4">
         <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3"><div className="text-sm">{line.text}</div><div className="shrink-0 text-lg font-semibold tabular-nums">{eur(line.amount)}</div></div>
         {suggestion && <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted"><Dot c={suggestion.confidence} /><span>{confLabel(suggestion.confidence)} · {suggestion.why}</span>{suggestion.rule && !suggestion.why.startsWith('Regel') && <Badge>Regel „{suggestion.rule.name}“</Badge>}</div>}
@@ -149,6 +151,7 @@ export function Assign({ line, ledger, onClose }: { line: BankLine; ledger: Ledg
         </div>}
       </div>
     </Drawer>
+    </div>
   )
 }
 
@@ -166,12 +169,19 @@ export function SplitsEditor({ type, splits, amount, ccs, cats, onChange }: { ty
     <div className="space-y-2">
       <div className="flex items-center justify-between text-sm"><span className="font-medium">{type} auf Kostenstelle(n)</span><span className={clsx('tabular-nums', sum === 100 ? 'text-ok' : 'text-bad')}>{sum} %</span></div>
       {splits.map((s, i) => (
-        <div key={i} className="flex flex-wrap items-center gap-2 rounded-xl border border-line p-2">
-          <select aria-label="Kostenstelle" className={`${field} min-w-0 flex-1`} value={s.costCenterId} onChange={(e) => patch(i, { costCenterId: e.target.value })}>{ccs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-          <select aria-label={type === 'Kosten' ? 'Kostenart' : 'Ertragsart'} className={`${field} min-w-0 flex-1`} value={s.categoryId} onChange={(e) => patch(i, { categoryId: e.target.value })}>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}{c.fixed ? ' (fix)' : ''}</option>)}</select>
-          <div className="flex items-center gap-1"><input aria-label="Prozent" inputMode="numeric" value={s.percent} onChange={(e) => patch(i, { percent: Number(e.target.value) || 0 })} className="h-11 w-14 rounded-lg border border-line text-right tabular-nums" />%</div>
-          <span className="w-20 text-right text-xs text-muted">{eur((amount * s.percent) / 100)}</span>
-          {splits.length > 1 && <button aria-label="Zeile entfernen" onClick={() => onChange(splits.filter((_, k) => k !== i))} className="grid h-9 w-9 place-items-center rounded-lg hover:bg-slate-100"><X size={15} /></button>}
+        // Cost center and category get the full width (their names are long); percent and amount only matter with several lines.
+        <div key={i} className="space-y-2 rounded-xl border border-line p-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <select aria-label="Kostenstelle" className={`${field} w-full min-w-0`} value={s.costCenterId} onChange={(e) => patch(i, { costCenterId: e.target.value })}>{ccs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+            <select aria-label={type === 'Kosten' ? 'Kostenart' : 'Ertragsart'} className={`${field} w-full min-w-0`} value={s.categoryId} onChange={(e) => patch(i, { categoryId: e.target.value })}>{cats.map((c) => <option key={c.id} value={c.id}>{c.name}{c.fixed ? ' (fix)' : ''}</option>)}</select>
+          </div>
+          {splits.length > 1 && (
+            <div className="flex items-center gap-2 text-sm">
+              <input aria-label="Prozent" inputMode="numeric" value={s.percent} onChange={(e) => patch(i, { percent: Number(e.target.value) || 0 })} className="h-9 w-16 rounded-lg border border-line px-2 text-right tabular-nums" />%
+              <span className="ml-auto text-xs tabular-nums text-muted">{eur((amount * s.percent) / 100)}</span>
+              <button aria-label="Zeile entfernen" onClick={() => onChange(splits.filter((_, k) => k !== i))} className="grid h-9 w-9 place-items-center rounded-lg text-muted hover:bg-slate-100"><X size={15} /></button>
+            </div>
+          )}
         </div>
       ))}
       <div className="flex flex-wrap gap-2">

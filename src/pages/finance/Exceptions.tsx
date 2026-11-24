@@ -7,7 +7,7 @@ import { csv } from './Invoices'
 import { type Ledger } from './ledger'
 import { openReceiptFile } from './parts'
 import { NoReceiptForm, OwnReceiptDoc, SecondSignForm, useCountersign } from './ReceiptDialogs'
-import { firstSignerOf, needsProof, PROOF, proofOf } from './status'
+import { firstSignerOf, gapsOf, lineStatus, needsProof, PROOF, proofOf } from './status'
 
 const newest = (a: BankLine, b: BankLine) => b.date.localeCompare(a.date)
 
@@ -17,15 +17,16 @@ const newest = (a: BankLine, b: BankLine) => b.date.localeCompare(a.date)
  * signed Eigenbeleg (`own`). Transfers between own accounts need none.
  */
 export function uncovered(ledger: Ledger) {
+  // Driven by the status of the booking, so this list and the bookings agree (receipts that do not cover the amount count as missing).
   const need = ledger.lines.filter((l) => needsProof(l, ledger) && ledger.done[l.id])
-  const bare = need.filter((l) => !ledger.receipts.some((r) => r.lineId === l.id))
+  const st = (l: BankLine) => lineStatus(l, ledger)
   const proof = (l: BankLine) => proofOf(l, ledger)
   return {
-    covered: need.length - bare.length,
-    sign: bare.filter((l) => proof(l) === 'unterschrift').sort(newest),
-    later: bare.filter((l) => proof(l) === 'ausnahme').sort(newest),
-    own: bare.filter((l) => proof(l) === 'eigenbeleg').sort(newest),
-    missing: bare.filter((l) => proof(l) === 'fehlt').sort(newest),
+    covered: need.filter((l) => gapsOf(l, ledger).length === 0).length,
+    sign: need.filter((l) => st(l) === 'unterschrift').sort(newest),
+    later: need.filter((l) => st(l) === 'ausnahme').sort(newest),
+    own: need.filter((l) => proof(l) === 'eigenbeleg').sort(newest),
+    missing: need.filter((l) => st(l) === 'beleg' || st(l) === 'abweichung').sort(newest),
   }
 }
 

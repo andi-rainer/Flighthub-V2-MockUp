@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { Download, FilePlus2, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { eur, type BankLine, type Receipt } from '../../data'
+import { AUSLAGE_ID, eur, members, type BankLine, type Receipt } from '../../data'
 import { Badge, Button, Card, Segmented, usePaging } from '../../ui'
 import { TODAY_ISO } from '../../state'
 import { dmy } from '../manifest/data'
@@ -35,6 +35,7 @@ export const csv = (name: string, head: string, rows: (string | number | undefin
 function stateOf(r: Receipt, line: BankLine | undefined, ledger: Ledger): { label: string; tone: 'ok' | 'warn' | 'bad' | 'info' | 'neutral' } {
   const x = ledger.expenseOf(r.id)
   if (!line && x) return x.status === 'abgelehnt' ? { label: 'Auslage abgelehnt', tone: 'bad' } : { label: 'Auslage zur Prüfung', tone: 'info' }
+  if (line?.accountId === AUSLAGE_ID) return { label: 'Auslage, gutgeschrieben', tone: 'ok' }
   if (line) return { label: 'Bezahlt', tone: 'ok' }
   if (r.due && r.due < TODAY_ISO) return { label: `Überfällig seit ${dmy(r.due)}`, tone: 'bad' }
   return { label: r.due ? `Abbuchung offen · fällig ${dmy(r.due)}` : r.amount < 0 ? 'Gutschrift offen' : 'Abbuchung offen', tone: 'warn' }
@@ -58,13 +59,15 @@ export default function Invoices({ ledger }: { ledger: Ledger }) {
   const inbox = useInbox()
   const sup = useSuppliers()
 
-  const all = ledger.receipts.map((r) => { const line = ledger.lines.find((l) => l.id === r.lineId); return { r, line, coding: ledger.codingOfReceipt(r), state: stateOf(r, line, ledger) } })
+  // Supplier invoices and credit notes; the club's own documents for money in stay with their bookings.
+  const invoices = ledger.receipts.filter((r) => !r.outgoing)
+  const all = invoices.map((r) => { const line = ledger.lines.find((l) => l.id === r.lineId); return { r, line, coding: ledger.codingOfReceipt(r), state: stateOf(r, line, ledger) } })
   const isUnpaid = (x: { r: Receipt; line?: BankLine }) => !x.line && !ledger.expenseOf(x.r.id)
   const unpaid = all.filter(isUnpaid)
   const overdue = unpaid.filter((x) => x.r.due && x.r.due < TODAY_ISO).length
   const missing = sup.list.flatMap((s) => missingPeriods(s, ledger.receipts).map((p) => ({ s, p })))
   const exceptions = uncovered(ledger)
-  const suppliers = [...new Set(ledger.receipts.map((r) => r.supplier))].sort((a, b) => a.localeCompare(b, 'de'))
+  const suppliers = [...new Set(invoices.map((r) => r.supplier))].sort((a, b) => a.localeCompare(b, 'de'))
   const shown = all
     .filter((x) => (status === 'alle' || isUnpaid(x)) && inRange(x.r.date, f) && amountOk(x.r.amount, f) && (!f.supplier || x.r.supplier === f.supplier) && codingOk(x.coding, f) && textOk([x.r.supplier, x.r.number, x.r.name, x.r.note, eur(x.r.amount), String(x.r.amount).replace('.', ','), x.line?.text], f.q))
     .sort((a, b) => (status === 'ohne' ? (a.r.due ?? '9999').localeCompare(b.r.due ?? '9999') : 0) || b.r.date.localeCompare(a.r.date))
@@ -132,7 +135,9 @@ export default function Invoices({ ledger }: { ledger: Ledger }) {
                     <div className="min-w-0"><div className="flex items-center gap-1.5"><span className="truncate text-sm font-medium">{r.supplier}</span>{r.amount < 0 && <Badge tone="info">Gutschrift</Badge>}</div><div className="truncate text-xs text-muted">{r.number ?? 'ohne Nummer'} · {r.source}</div></div>
                     <div className="min-w-0 truncate text-sm" title={where(coding)}>{coding.length > 0 ? where(coding) : <span className="text-muted">Noch offen</span>}</div>
                     <div className="text-sm font-semibold tabular-nums md:text-right">{eur(r.amount)}</div>
-                    <div className="min-w-0 text-sm">{line
+                    <div className="min-w-0 text-sm">{line?.accountId === AUSLAGE_ID
+                      ? <span className="flex items-center gap-1.5 text-muted">{ledger.isLocked(line.date) && <Lock size={12} className="shrink-0" />}<span className="truncate">Auslage {members.find((m) => m.id === r.paidBy)?.name ?? ''} · gutgeschrieben {dmy(line.date)}</span></span>
+                      : line
                       ? <span className="flex items-center gap-1.5 text-muted">{ledger.isLocked(line.date) && <Lock size={12} className="shrink-0" />}<span className="truncate">{dmy(line.date)} · {ledger.accountName(line.accountId)} · {line.bookingText ?? line.text}</span></span>
                       : <Badge tone={state.tone}>{state.label}</Badge>}</div>
                     <button aria-label={`${r.name} öffnen`} title="Datei öffnen" onClick={(e) => { e.stopPropagation(); openReceiptFile(r.name) }} className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-slate-100 hover:text-ink"><Download size={15} /></button>

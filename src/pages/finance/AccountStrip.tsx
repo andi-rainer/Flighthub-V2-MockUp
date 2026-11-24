@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { Pencil, Plus, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import { AUSLAGE_ID, eur, type MoneyAccount } from '../../data'
+import { eur, type MoneyAccount } from '../../data'
 import { useSession } from '../../session/session'
 import { Button, Drawer, Switch } from '../../ui'
 import { TODAY_ISO } from '../../state'
@@ -72,11 +72,6 @@ export default function AccountStrip({ ledger, value, onChange }: { ledger: Ledg
             </div>
           )
         })}
-        <button onClick={() => toggle(AUSLAGE_ID)} className={card(AUSLAGE_ID, value === AUSLAGE_ID)} aria-pressed={value === AUSLAGE_ID}>
-          <div className="text-xs font-medium text-muted">Auslagen</div>
-          <div className="text-lg font-semibold tabular-nums">{ledger.lines.filter((l) => l.accountId === AUSLAGE_ID).length}</div>
-          <div className="text-xs text-muted">privat bezahlt, gutgeschrieben</div>
-        </button>
         <button onClick={() => setForm('new')} className="flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-line p-3 text-sm text-muted hover:border-brand hover:text-brand"><Plus size={15} /> Konto anlegen</button>
       </div>
       {old.length > 0 && <button onClick={() => setArchived(!archived)} className="text-xs text-brand">{archived ? 'Archivierte Konten ausblenden' : `${old.length} archivierte Konten anzeigen`}</button>}

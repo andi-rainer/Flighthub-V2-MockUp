@@ -7,7 +7,7 @@ import { useDayCheck } from './dayCheck'
 
 /**
  * [Entwurf] The in-app copy of the mail "Konto im Minus": shown to a member whose Betriebskonto is in minus after a Sprungtag.
- * Only the newest message counts. `to` is where topping up happens (Mein Konto); on Mein Konto itself `onTopUp` opens the deposit instead.
+ * Only the newest message counts. `to` is where topping up happens (Mein Konto); on Mein Konto itself `onTopUp` scrolls to the bank details instead.
  */
 export default function MinusNotice({ memberId, to = '/mein-konto', onTopUp, className }: { memberId: string; to?: string; onTopUp?: () => void; className?: string }) {
   const msg = useDayCheck().messages.find((m) => m.memberId === memberId)

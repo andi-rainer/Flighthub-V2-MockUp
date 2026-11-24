@@ -1,6 +1,5 @@
 import { Search, X } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { AUSLAGE_ID } from '../../data'
 import { field } from '../../ui'
 import type { Coding, Ledger } from './ledger'
 
@@ -41,7 +40,6 @@ export function FilterBar({ value, onChange, ledger, accounts, suppliers, amount
         <select aria-label="Konto" value={value.account} onChange={(e) => set({ account: e.target.value })} className={field}>
           <option value="">Alle Konten</option>
           {ledger.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          <option value={AUSLAGE_ID}>Auslagen (privat bezahlt)</option>
         </select>
       )}
       {suppliers && (

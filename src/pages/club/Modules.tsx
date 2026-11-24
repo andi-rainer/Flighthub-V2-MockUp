@@ -16,7 +16,6 @@ export default function Modules() {
   const { afpConfig, setAfpConfig, modules, setModules, docVersioning, setDocVersioning } = useApp()
   const { guarded } = useSession()
   const [reserve, setReserve] = useState(String(afpConfig.reserveMin))
-  const [alternate, setAlternate] = useState(String(afpConfig.alternateMin))
   const [off, setOff] = useState<Area | null>(null)
   const set = (p: Partial<AfpConfig>) => guarded(guardPerm, () => setAfpConfig({ ...afpConfig, ...p }))
   const reserveOk = Number.isInteger(Number(reserve)) && Number(reserve) >= 0
@@ -42,10 +41,6 @@ export default function Modules() {
             <Row label="PDF bei der Freigabe per Mail an den Piloten senden"><Switch checked={afpConfig.mailPdf && afpConfig.evidence} disabled={!afpConfig.evidence} label="PDF bei der Freigabe per Mail an den Piloten senden" onChange={(v) => set({ mailPdf: v })} /></Row>
             <Row label="Reserve">
               <input aria-label="Reserve in Minuten" inputMode="numeric" value={reserve} onChange={(e) => setReserve(e.target.value.replace(/\D/g, ''))} onBlur={() => reserveOk && Number(reserve) !== afpConfig.reserveMin && set({ reserveMin: Number(reserve) })} className="h-9 w-20 rounded-lg border border-line bg-surface px-2.5 text-right text-sm tabular-nums outline-none focus:border-brand" />
-              <span className="w-14 text-muted">Minuten</span>
-            </Row>
-            <Row label="Flugzeit zum Alternate" hint="Vorgabe im AFP, der Pilot ändert sie je Flug">
-              <input aria-label="Alternate in Minuten" inputMode="numeric" value={alternate} onChange={(e) => setAlternate(e.target.value.replace(/\D/g, ''))} onBlur={() => alternate !== '' && Number(alternate) !== afpConfig.alternateMin && set({ alternateMin: Number(alternate) })} className="h-9 w-20 rounded-lg border border-line bg-surface px-2.5 text-right text-sm tabular-nums outline-none focus:border-brand" />
               <span className="w-14 text-muted">Minuten</span>
             </Row>
           </>

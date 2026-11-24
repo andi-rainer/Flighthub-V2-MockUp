@@ -129,13 +129,19 @@ export function SplitButton({ children, onClick, actions, ariaLabel = 'Weitere M
   )
 }
 
+/** Open drawers, newest last: Escape closes only the one on top (a dialog opened from a drawer, not both). */
+const drawerStack: symbol[] = []
 export function Drawer({ open, title, onClose, children, footer, size = 'md' }: { open: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; size?: 'md' | 'xl' }) {
+  const close = useRef(onClose)
+  close.current = onClose
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const me = Symbol('drawer')
+    drawerStack.push(me)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && drawerStack[drawerStack.length - 1] === me) close.current() }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [open, onClose])
+    return () => { document.removeEventListener('keydown', onKey); drawerStack.splice(drawerStack.indexOf(me), 1) }
+  }, [open])
   if (!open) return null
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/30" onClick={onClose}>

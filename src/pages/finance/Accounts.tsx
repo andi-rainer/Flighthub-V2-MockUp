@@ -3,7 +3,7 @@ import { Banknote, Bell, ExternalLink, FileText, HandCoins, Landmark, Paperclip,
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { TODAY_ISO, useApp } from '../../state'
-import { AUSLAGE_ID, CASH_ID, eur, members, type Member } from '../../data'
+import { CASH_ID, eur, members, type Member } from '../../data'
 import MemberPicker from '../../MemberPicker'
 import { useSession } from '../../session/session'
 import { ActionPanel, Badge, Button, Card, Drawer, field, RowMenu, Segmented, Stat, useConfirm, usePaging } from '../../ui'
@@ -29,7 +29,7 @@ export default function Accounts({ ledger }: { ledger: Ledger }) {
   const [params, setParams] = useSearchParams()
   const { hasAccount, windDown, can } = useApp()
   const { guarded } = useSession()
-  const { accountRules: rules, reminders, announcements } = ledger
+  const { accountRules: rules, reminders } = ledger
   const view: View = params.get('ansicht') === 'offen' ? 'offen' : 'alle'
   // The view lives in the address, next to the tab.
   const setView = (v: View) => setParams((p) => { const n = new URLSearchParams(p); if (v === 'offen') n.set('ansicht', 'offen'); else n.delete('ansicht'); n.delete('filter'); return n }, { replace: true })
@@ -58,7 +58,6 @@ export default function Accounts({ ledger }: { ledger: Ledger }) {
   const credit = withAccount.reduce((n, m) => n + Math.max(0, bal(m)), 0)
   const inMinus = withAccount.filter((m) => bal(m) < 0).length
   const incoming = ledger.lines.filter((l) => l.amount > 0 && !ledger.done[l.id])
-  const toldOpen = announcements.filter((a) => a.status === 'offen' && hasAccount(a.memberId))
   const open = withAccount.find((m) => m.id === openId) ?? null
   const chipLabels: [Chip, string][] = [['nonzero', 'Saldo ungleich 0'], ['minus', 'Im Minus'], ['active', 'Nur aktive']]
   const allSelected = list.length > 0 && list.every((m) => sel.includes(m.id))
@@ -98,18 +97,6 @@ export default function Accounts({ ledger }: { ledger: Ledger }) {
           </div>
           <div className="mt-3 border-t border-line pt-3"><CapSettings value={limits} onChange={(v) => setLimits({ ...limits, ...v })} /></div>
         </ActionPanel>
-      )}
-
-      {toldOpen.length > 0 && (
-        <Card className="divide-y divide-line border-brand/30">
-          {toldOpen.map((a) => (
-            <div key={a.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 text-sm">
-              <Banknote size={16} className="text-brand" />
-              <span className="min-w-0 flex-1"><b>{members.find((m) => m.id === a.memberId)?.name}</b> meldet {eur(a.amount)} {a.kind === 'bar' ? 'bar' : 'per Überweisung'} am {dm(a.date)}{a.note && <span className="text-muted"> · {a.note}</span>}</span>
-              <Button onClick={() => setOpenId(a.memberId)}>Zuordnen</Button>
-            </div>
-          ))}
-        </Card>
       )}
 
       {incoming.length > 0 && (
@@ -296,7 +283,7 @@ function SourceLink({ e, ledger }: { e: Entry; ledger: Ledger }) {
   const to = s.kind === 'flug' ? '/bordbuch' : s.kind === 'sprungtag' ? '/manifest'
     : s.kind === 'bank' ? `/finanzen?tab=bank&konto=${line?.accountId ?? 'acc-bank'}${line ? `&line=${line.id}` : ''}`
     : s.kind === 'kassa' ? `/finanzen?tab=bank&konto=${CASH_ID}${line ? `&line=${line.id}` : ''}`
-    : s.kind === 'auslage' ? `/finanzen?tab=bank&konto=${AUSLAGE_ID}${line ? `&line=${line.id}` : ''}` : '/finanzen?tab=bank'
+    : s.kind === 'auslage' ? `/finanzen?tab=auslagen${line ? `&ansicht=gebucht&line=${line.id}` : ''}` : '/finanzen?tab=bank'
   return <Link to={to} state={FROM_ACCOUNTS.state} title="Zur Quelle der Buchung" className="ml-2 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-px text-xs font-medium text-muted hover:text-brand">{SOURCE_LABEL[s.kind]}<ExternalLink size={10} /></Link>
 }
 
@@ -330,7 +317,6 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
   // Transfers are assigned in Finanzen > Bank. Here only a likely match is offered (a part of the name is in the transfer text).
   const hint = (name: string) => member.name.split(' ').some((p) => name.toLowerCase().includes(p.toLowerCase()))
   const likely = ledger.lines.filter((l) => l.amount > 0 && !ledger.done[l.id] && hint(l.text))
-  const told = ledger.announcements.filter((a) => a.memberId === member.id && a.status === 'offen')
   const history = ledger.history[member.id] ?? []
   const provisional = useProvisional()
   const paging = usePaging(history, `${member.id}|${history.length}`, [10, 25, 50])
@@ -401,27 +387,6 @@ export function AccountPanel({ member, ledger, wide = false }: { member: Member;
             {value > 0 && <span className="ml-auto text-xs text-muted">Kassa {eur(ledger.cash)} → <b className="text-ink">{eur(ledger.cash + value)}</b></span>}
           </div>
           <DepositSplit memberId={member.id} balance={balance} amount={value} reason={reason} onReason={setReason} />
-        </section>
-      )}
-
-      {told.length > 0 && (
-        <section className="space-y-2">
-          <h3 className="flex items-center gap-2 text-sm font-semibold"><Banknote size={16} /> Vom Mitglied gemeldet</h3>
-          {told.map((a) => {
-            const match = a.kind === 'ueberweisung' ? ledger.lines.find((l) => l.amount === a.amount && !ledger.done[l.id]) : undefined
-            return (
-              <div key={a.id} className="space-y-2 rounded-xl border border-brand/30 bg-brand-soft/40 p-3 text-sm">
-                <div className="flex items-center justify-between gap-3"><span>{a.kind === 'bar' ? 'Bar übergeben' : 'Überwiesen'} am {dm(a.date)}{a.note && <span className="text-muted"> · {a.note}</span>}</span><b className="tabular-nums">{eur(a.amount)}</b></div>
-                {(a.kind === 'bar' || match) && <DepositSplit memberId={member.id} balance={balance} amount={a.amount} reason={reasons[a.id]} onReason={(r) => setReasons({ ...reasons, [a.id]: r })} />}
-                {a.kind === 'bar'
-                  ? <Button disabled={depositBlocked(member.id, balance, a.amount, reasons[a.id] ?? '')} onClick={() => askDeposit('kassa', a.amount, a.date, () => { ledger.cashDeposit(member.id, a.amount, '', a.date); ledger.resolveAnnouncement(a.id) }, reasons[a.id])}>Bar einbuchen {eur(a.amount)}</Button>
-                  : match
-                    ? <div className="flex items-center gap-3"><span className="min-w-0 flex-1 truncate text-xs text-muted">Bankzeile: {match.text} · {dm(match.date)}</span><Button disabled={depositBlocked(member.id, balance, a.amount, reasons[a.id] ?? '')} onClick={() => askDeposit('bank', match.amount, match.date, () => { ledger.assign(match.id, { kind: 'konto', memberId: member.id }); ledger.resolveAnnouncement(a.id) }, reasons[a.id], match.id, match.text)}>Zuweisen</Button></div>
-                    : <div className="text-xs text-muted">Noch keine passende Überweisung auf dem Konto.</div>}
-                <button onClick={() => ledger.resolveAnnouncement(a.id)} className="text-xs text-muted hover:text-ink">Meldung schließen</button>
-              </div>
-            )
-          })}
         </section>
       )}
 
